@@ -13,6 +13,7 @@ import casadi as ca
 import matplotlib.pyplot as plt
 import scipy
 
+
 ALL_PARAMS = [
     # PTS
     "kI_pyr_1",
@@ -216,11 +217,11 @@ class EcoliCarbonKinetics:
         Reaction : glc + pep -> g6p + pyr
         Enzymes : PtsI, PtsH
 
-        Rate is the sum of three additive terms:
-            v = inhibition(pyr) + activation(pep) + kinetic(glc, pep/pyr)
+        Rate is the product of three multiplicative terms:
+            v = inhibition(pyr) * activation(pep) * kinetic(glc, g6p, pep/pyr)
 
         constants keys : kI_pyr_1, kA_pep_1, v_max_1, Ka1_1, Ka2_1, Ka3_1, n_g6p_1, K_g6p_1
-        C keys : C_pyr, C_pep, C_glc
+        C keys : C_pyr, C_pep, C_glc, C_g6p
         e keys : (none)
         """
         kI_pyr_1 = constants["kI_pyr_1"]
@@ -239,12 +240,13 @@ class EcoliCarbonKinetics:
         inhibition = kI_pyr_1 / (kI_pyr_1 + C_pyr)
         activation = C_pep / (C_pep + kA_pep_1)
 
+        C_g6p = C["C_g6p"]
         num = v_max_1 * C_glc * (C_pep / C_pyr)
         den1 = Ka1_1 + Ka2_1 * (C_pep / C_pyr) + Ka3_1 * C_glc + C_glc * (C_pep / C_pyr)
-        den2 = 1 + (C_glc**n_g6p_1) / K_g6p_1
+        den2 = 1 + (C_g6p**n_g6p_1) / K_g6p_1
         kinetic = num / (den1 * den2)
 
-        return inhibition + activation + kinetic
+        return inhibition * activation * kinetic
 
     def pgi(self, constants: dict, C: dict, e: dict) -> float:
         """
@@ -553,42 +555,34 @@ class EcoliCarbonKinetics:
 
         return e["Eno"] * num / den
 
-    def _ode_system(self, t, x, e, constants):
+
+    def compute_fluxes(self, C: dict) -> np.ndarray:
         """
-        dx/dt = S @ v(x, e, constants)
+        Evaluate all 9 reaction fluxes at metabolite concentrations C.
 
         Parameters
         ----------
-        t : float
-            Current time (required by scipy ODE solvers).
-        x : array-like, shape (9,)
-            State vector: [C_2pg, C_3pg, C_dhap, C_f6p, C_fbp,
-                           C_g3p, C_g6p, C_pep, C_pgp]
-        e : dict
-            Enzyme concentrations.
-        constants : dict
-            Kinetic constants.
+        C : dict
+            Full concentration dict (dynamic + fixed metabolites).
 
         Returns
         -------
-        numpy.ndarray, shape (9,)
-            Time derivatives of all metabolite concentrations.
+        np.ndarray, shape (9,)
+            Flux vector [v1, ..., v9].
         """
-        v = np.array(
-            [
-                self.pts(constants, x, e),
-                self.pgi(constants, x, e),
-                self.pfk(constants, x, e),
-                self.fba(constants, x, e),
-                self.tpi(constants, x, e),
-                self.gap(constants, x, e),
-                self.pgk(constants, x, e),
-                self.gpm(constants, x, e),
-                self.eno(constants, x, e),
-            ]
-        )
+        return np.array([
+            self.pts(self.constants, C, self.enzymes),
+            self.pgi(self.constants, C, self.enzymes),
+            self.pfk(self.constants, C, self.enzymes),
+            self.fba(self.constants, C, self.enzymes),
+            self.tpi(self.constants, C, self.enzymes),
+            self.gap(self.constants, C, self.enzymes),
+            self.pgk(self.constants, C, self.enzymes),
+            self.gpm(self.constants, C, self.enzymes),
+            self.eno(self.constants, C, self.enzymes),
+        ], dtype=float)
 
-        return self.stoichiometric_matrix.values @ v
+
 
     def simulate_system(self, tspan, opts=None):
         """
@@ -672,12 +666,14 @@ class EcoliCarbonKinetics:
                "p": p_sym, # parameters
                "ode": dxdt # ode : dx/dt = S @ v
                }
-        integrator = ca.integrator("integrator", "cvodes", dae, tspan[0], np.linspace(tspan[0], tspan[1], 100)) # integrator
+        integrator = ca.integrator("integrator", "idas", 
+                                   dae, 
+                                   tspan[0], np.linspace(tspan[0], tspan[1], 10000),
+                                   opts) # integrator
 
         # Numeric values -> generate the numeric parameter that replace the symbolic parameters for simulation
         # x0 its the initial condition for the state variables (dynamic metabolites)
         x0 = ca.DM([self.metabolites[n] for n in dyn_names]) # <- initial passed in metabolite concentrations dict
-        print(x0)
         sol = integrator(x0=x0, p=p_sym) # generate the solution for the integrator
 
         eval_xf = ca.Function(
@@ -694,7 +690,7 @@ class EcoliCarbonKinetics:
         x_sim = eval_xf(p_val) # evaluate the solution at the parameter values  
 
         x_sim = x_sim.full().T
-        return x_sim
+        return tspan, pd.DataFrame(x_sim, columns=dyn_names)
 
     def _construct_stoichiometric_matrix(self) -> pd.DataFrame:
         """
@@ -727,7 +723,6 @@ class EcoliCarbonKinetics:
         reactions = ["pts", "pgi", "pfk", "fba", "tpi", "gap", "pgk", "gpm", "eno"]
 
         return pd.DataFrame(N, index=metabolites, columns=reactions)
-
 
 def load_params(csv_path: str) -> dict:
     """
@@ -794,50 +789,129 @@ def plot_trayectories(sol_casadi, t, names):
     ax.set_xlabel("Time (h)")
     ax.set_ylabel("Concentration (mM)")
     ax.legend()
+    
+    
 # %%
 if __name__ == "__main__":
     # Example usage
-    constants = load_params("params.csv")
-    constants2 = merge_and_fill(constants, random_state=9)
+    constants = {
+        # v1: PTS (Sistema de fosfotransferasa)
+        "kI_pyr_1": 0.5,  # Inhibición por piruvato
+        "kA_pep_1": 0.3,  # Afinidad/Activación por PEP
+        "v_max_1": 25.739,  # Flujo máximo típico en fase exponencial
+        "Ka1_1": 1.0,  # Parámetros de la ecuación compleja del PTS
+        "Ka2_1": 0.01,
+        "Ka3_1": 1.0,
+        "n_g6p_1": 4,  # Cooperatividad/Regulación por G6P
+        "K_g6p_1": 0.5,
+        # v2: PGI (Glucosa-6-fosfato isomerasa)
+        "kI_pep_2": 0.12,  # Fuerte inhibición por PEP
+        "Km_g6p_2": 0.48,
+        "Km_f6p_2": 0.19,
+        "kcat_f_2": 1475.0,  # Reacción muy rápida
+        "kcat_r_2": 1000.0,
+        # v3: PFK (Fosfofructoquinasa) - Enzima regulatoria clave
+        "kI_f6p_3": 0.9,
+        "kI_fbp_3": 2.0,
+        "kI_gtp_3": 0.8,
+        "kI_pep_3": 0.5,  # Inhibidor alostérico principal
+        "kI_pi_3": 1.5,
+        "kA_adp_3": 0.12,  # Activador alostérico
+        "kA_gdp_3": 0.15,
+        "Km_f6p_3": 0.16,
+        "Km_atp_3": 0.12,
+        "Km_fbp_3": 0.5,
+        "Km_adp_3": 0.2,
+        "kcat_f_3": 580.0,
+        "kcat_r_3": 100.0,
+        # v4: FBA (Fructosa-bisfosfato aldolasa)
+        "kI_3pg_4": 2.0,
+        "kI_dhap_4": 0.08,
+        "kI_g3p_4": 0.1,
+        "kA_pep_4": 1.5,
+        "kcat_f_4": 95.0,
+        "kcat_r_4": 150.0,
+        "Km_fbp_4": 0.3,
+        "Km_g3p_4": 0.4,
+        "Km_dhap_4": 2.0,
+        # v5: TPI (Triosafosfato isomerasa)
+        "kcat_f_5": 4300.0,  # Cercana a la perfección catalítica
+        "kcat_r_5": 2400.0,
+        "Km_dhap_5": 0.61,
+        "Km_g3p_5": 1.2,
+        # v6: GAPDH (Gliceraldehído-3-fosfato deshidrogenasa)
+        "kI_adp_6": 0.8,
+        "kI_amp_6": 1.0,
+        "kI_atp_6": 0.2,
+        "kcat_f_6": 118.0,
+        "kcat_r_6": 10.0,
+        "Km_g3p_6": 0.21,
+        "Km_pi_6": 0.29,
+        "Km_nad_6": 0.09,
+        "Km_pgp_6": 0.01,
+        "Km_nadh_6": 0.06,
+        # v7: PGK (Fosfoglicerato quinasa)
+        "kA_3pg_7": 0.5,
+        "kA_atp_7": 0.3,
+        "kcat_f_7": 1150.0,
+        "kcat_r_7": 40.0,
+        "Km_pgp_7": 0.05,
+        "Km_adp_7": 0.1,
+        "Km_3pg_7": 0.53,
+        "Km_atp_7": 0.3,
+        # v8: GPM (Fosfoglicerato mutasa)
+        "kI_pi_8": 10.0,  # Inhibición débil por Pi
+        "kcat_f_8": 540.0,
+        "kcat_r_8": 120.0,
+        "Km_3pg_8": 0.2,
+        "Km_2pg_8": 1.4,
+        # v9: ENO (Enolasa)
+        "kcat_f_9": 550.0,
+        "kcat_r_9": 210.0,
+        "Km_2pg_9": 0.1,
+        "Km_pep_9": 0.5,
+    }
     metabolites = {
         # balanced
-        "C_2pg": 0.1,
-        "C_3pg": 0.1,
-        "C_dhap": 0.1,
-        "C_f6p": 0.1,
-        "C_fbp": 0.1,
-        "C_g3p": 0.1,
-        "C_g6p": 0.1,
-        "C_pep": 1,
-        "C_pgp": 0.1,
+        "C_2pg": 2.84e-5,
+        "C_3pg": 4.52e-4,
+        "C_dhap": 4.48e-6,
+        "C_f6p": 3.53e-5,
+        "C_fbp": 3.42e-5,
+        "C_g3p": 4.23e-7,
+        "C_g6p": 2.45e-4,
+        "C_pep": 1.02e-4,
+        "C_pgp": 2.56e-6,
         # fixed
-        "C_atp": 10,
-        "C_adp": 10,
-        "C_amp": 10,
-        "C_gdp": 10,
-        "C_glc": 10,
-        "C_gtp": 10,
-        "C_nad": 10,
-        "C_nadh": 10,
-        "C_pi": 10,
-        "C_pyr": 10,
+        "C_atp": 0.1,
+        "C_adp": 0.01,
+        "C_amp": 0.01,
+        "C_gdp": 0.01,
+        "C_glc": 0.01,
+        "C_gtp": 0.01,
+        "C_nad": 0.01,
+        "C_nadh": 0.01,
+        "C_pi": 0.01,
+        "C_pyr": 0.01,
     }
     enzymes = {
-        "Pgi": 1,
+        "Pgi": 0.01,
         "PfkB": 0.1,
         "FbaA": 0.1,
         "TpiA": 0.1,
         "GapA": 0.1,
-        "Pgk": 1,
+        "Pgk": 0.01,
         "GpmA": 0.1,
         "Eno": 0.1,
     }
-    model = EcoliCarbonKinetics(metabolites, enzymes, constants2)
-    opts = {"tf": 10, 'number_of_fwd_steps': 100,
-            'constraints': [1, 1, 1, 1, 1, 1, 1, 1, 1], # enforce non-negativity of all metabolites 
-            'reltol': 1e-6, 'abstol': 1e-8,
-            'integrator': 'idas'
-    }
-    sol = model.simulate_system(tspan=(0, 10), opts=opts)
-    plot_trayectories(sol, np.linspace(0, 10, 100), model.stoichiometric_matrix.index)
-# %%
+    model = EcoliCarbonKinetics(metabolites, enzymes, constants)
+    opts = {                                                                                                                 
+        "max_num_steps": 1e100,                                                                                            
+        "constraints": [1, 1, 1, 1, 1, 1, 1, 1, 1],
+        "reltol": 1e-10,                                                                                                      
+        "abstol": 1e-8,                                                                                                      
+    }   
+    sol = model.simulate_system(tspan=(0, 10000), opts=opts)
+    # plot_trayectories(sol, np.linspace(0, 10000, 100), model.stoichiometric_matrix.index)
+    
+    # %%

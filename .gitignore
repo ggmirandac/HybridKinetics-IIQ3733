@@ -254,3 +254,6 @@ pyrightconfig.json
 *.txt
 
 Model/fetch_brenda.py
+
+*.pdf
+
