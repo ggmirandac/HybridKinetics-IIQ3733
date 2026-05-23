@@ -12,7 +12,7 @@ import pandas as pd
 import casadi as ca
 import matplotlib.pyplot as plt
 import scipy
-
+import pyomo.environ as pyo
 
 ALL_PARAMS = [
     # PTS
@@ -22,7 +22,7 @@ ALL_PARAMS = [
     "Ka1_1",
     "Ka2_1",
     "Ka3_1",
-    "n_g6p_1",
+    # "n_g6p_1", HARD CODED AS HILL COEFFICIENT
     "K_g6p_1",
     # PGI
     "kI_pep_2",
@@ -99,7 +99,7 @@ PARAM_RXN_MAP = {
         "Ka1_1",
         "Ka2_1",
         "Ka3_1",
-        "n_g6p_1",
+        # "n_g6p_1", # HARD CODED AS IT IS STRUCTURAL
         "K_g6p_1",
     ],
     "pgi": ["kI_pep_2", "Km_g6p_2", "Km_f6p_2", "kcat_f_2", "kcat_r_2"],
@@ -203,13 +203,12 @@ class EcoliCarbonKinetics:
     stoichiometric_matrix : pd.DataFrame
         9x9 stoichiometric matrix N (metabolites x reactions).
     """
+    balanced_keys = ["C_g6p", "C_f6p", "C_fbp", "C_dhap", "C_g3p", "C_pgp", "C_3pg", "C_2pg", "C_pep"]
+    unbalanced_keys = ["C_atp", "C_adp", "C_amp", "C_gtp", "C_gdp", "C_nad", "C_nadh", "C_pi", "C_pyr", "C_glc"]
 
-    def __init__(self, metabolites: dict, enzymes: dict, constants: dict):
-        self.metabolites = metabolites
-        self.enzymes = enzymes
-        self.constants = constants
+    def __init__(self, bounds_unbalanced_mets: dict):
         self.stoichiometric_matrix = self._construct_stoichiometric_matrix()
-
+        self.bounds_unbalanced_mets = bounds_unbalanced_mets
     def pts(self, constants: dict, C: dict, e: dict) -> float:
         """
         Phosphotransferase system (PTS).
@@ -230,7 +229,7 @@ class EcoliCarbonKinetics:
         Ka1_1 = constants["Ka1_1"]
         Ka2_1 = constants["Ka2_1"]
         Ka3_1 = constants["Ka3_1"]
-        n_g6p_1 = constants["n_g6p_1"]
+        # n_g6p_1 = constants["n_g6p_1"] 
         K_g6p_1 = constants["K_g6p_1"]
 
         C_pyr = C["C_pyr"]
@@ -243,7 +242,7 @@ class EcoliCarbonKinetics:
         C_g6p = C["C_g6p"]
         num = v_max_1 * C_glc * (C_pep / C_pyr)
         den1 = Ka1_1 + Ka2_1 * (C_pep / C_pyr) + Ka3_1 * C_glc + C_glc * (C_pep / C_pyr)
-        den2 = 1 + (C_g6p**n_g6p_1) / K_g6p_1
+        den2 = 1 + (C_g6p**4) / K_g6p_1
         kinetic = num / (den1 * den2)
 
         return inhibition * activation * kinetic
@@ -414,7 +413,7 @@ class EcoliCarbonKinetics:
         """
         Glyceraldehyde-3-phosphate dehydrogenase A (GAP).
         EC: 1.2.1.12
-        Reaction : g3p + Pi + NAD+ <=> pgp + NADH
+        Reaction : g3p + Pi + NAD+ <=> pgp + NADH # pgp -> 1,3 biphosphoglycerate
         Enzyme : GapA
         Inhibited by ADP, AMP, ATP.
 
@@ -556,96 +555,32 @@ class EcoliCarbonKinetics:
         return e["Eno"] * num / den
 
 
-    def compute_fluxes(self, C: dict) -> np.ndarray:
+    def compute_fluxes(self, C_balanced, C_unbalanced, e, parameters) -> np.ndarray:
         """
         Evaluate all 9 reaction fluxes at metabolite concentrations C.
 
         Parameters
         ----------
         C : dict
-            Full concentration dict (dynamic + fixed metabolites).
+            Full concentration dict (balanced + unbalanced metabolites).
+        e : dict
+            Enzyme concentrations.
+        constants : dict
+            Kinetic parameters.
 
         Returns
         -------
         np.ndarray, shape (9,)
             Flux vector [v1, ..., v9].
         """
-        return np.array([
-            self.pts(self.constants, C, self.enzymes),
-            self.pgi(self.constants, C, self.enzymes),
-            self.pfk(self.constants, C, self.enzymes),
-            self.fba(self.constants, C, self.enzymes),
-            self.tpi(self.constants, C, self.enzymes),
-            self.gap(self.constants, C, self.enzymes),
-            self.pgk(self.constants, C, self.enzymes),
-            self.gpm(self.constants, C, self.enzymes),
-            self.eno(self.constants, C, self.enzymes),
-        ], dtype=float)
-
-
-
-    def simulate_system(self, tspan, opts=None):
-        """
-        Simulate the kinetic system to steady state using CasADi/CVODES.
-
-        Parameters
-        ----------
-        tspan : tuple
-            (t_start, t_end) in hours.
-        opts : dict, optional
-            Extra options forwarded to ca.integrator.
-
-        Returns
-        -------
-        pd.DataFrame
-            Final metabolite concentrations keyed by name.
-        """
-        if opts is None:
-            opts = {}
-
-        # Dynamic state: the 9 metabolites tracked by the stoich matrix (same order)
-        dyn_names = [
-            "C_2pg",
-            "C_3pg",
-            "C_dhap",
-            "C_f6p",
-            "C_fbp",
-            "C_g3p",
-            "C_g6p",
-            "C_pep",
-            "C_pgp",
-        ]
-
-        # State vector: 9 dynamic metabolites (rows of stoich matrix)
-        x_sym = ca.MX.sym("x", len(dyn_names))
-
-        # --- Parameters ---
-        # Fixed metabolites that are not balances
-        fixed_names = [n for n in self.metabolites if n not in dyn_names] 
-        # enzymes
-        enzyme_names = list(self.enzymes.keys())
-        # constants
-        const_names = list(self.constants.keys())
-
-        # Parameter vector: fixed metabolites | enzymes | kinetic constants
-        n_fixed = len(fixed_names)
-        n_enz = len(enzyme_names)
-        n_const = len(const_names)
-        p_sym = ca.MX.sym("p", n_fixed + n_enz + n_const) # symbolic parameters
-
-        # --- packages for simulation ---
-        # the fluxes take dictionaries in the form C[name], e[name], constants[name]
-        # so we create the dictionaries with the symbolic variables that we created before as values
-        C = {name: x_sym[i] for i, name in enumerate(dyn_names)} # <- state variables
-        for i, name in enumerate(fixed_names):
-            C[name] = p_sym[i] # <- fixed metabolites
-
-        e = {name: p_sym[n_fixed + i] for i, name in enumerate(enzyme_names)} # <- enzyme concentrations
-        constants = {name: p_sym[n_fixed + n_enz + i] for i, name in enumerate(const_names)} # <- kinetic constants
-
-        # Flux vector
-        # now this computation results with the symbolic fluxes as functions of the symbolic parameters and state variables
-        v = ca.vertcat(
+        C = {
+            **{f"{met}": conc for met, conc in C_balanced.items()},
+            **{f"{met}": conc for met, conc in C_unbalanced.items()},
+        }
+        constants = parameters
+        e = e
+        
+        return [
             self.pts(constants, C, e),
             self.pgi(constants, C, e),
             self.pfk(constants, C, e),
@@ -655,42 +590,95 @@ class EcoliCarbonKinetics:
             self.pgk(constants, C, e),
             self.gpm(constants, C, e),
             self.eno(constants, C, e),
-        )
+        ]
+        
+        
+        
 
-        # dx/dt = S @ v
-        S = ca.DM(self.stoichiometric_matrix.values) # convert to CasADi DM type
-        dxdt = ca.mtimes(S, v) # symbolic expression for the ODE right-hand side S @ v
 
-        # Build CVODES integrator
-        dae = {"x": x_sym, # state variables
-               "p": p_sym, # parameters
-               "ode": dxdt # ode : dx/dt = S @ v
-               }
-        integrator = ca.integrator("integrator", "idas", 
-                                   dae, 
-                                   tspan[0], np.linspace(tspan[0], tspan[1], 10000),
-                                   opts) # integrator
 
-        # Numeric values -> generate the numeric parameter that replace the symbolic parameters for simulation
-        # x0 its the initial condition for the state variables (dynamic metabolites)
-        x0 = ca.DM([self.metabolites[n] for n in dyn_names]) # <- initial passed in metabolite concentrations dict
-        sol = integrator(x0=x0, p=p_sym) # generate the solution for the integrator
+    def solve_steady_state(self, 
+                           enzymes            : dict, # dictionary of enzyme concentrations
+                           kenetic_params     : dict, # dictionary of kinetic parameters
+                           opts               : dict = None, # options for the rootfinder
+                           ):
+        """
+        Simulate the kinetic system to steady state using CasADi/CVODES.
 
-        eval_xf = ca.Function(
-            'eval_xf',
-            [p_sym], 
-            [sol['xf']]
-        )
-        # eval
-        p_val = ca.DM(
-            [self.metabolites[n] for n in fixed_names] # <- fixed passed in metabolite concentrations dict
-            + [self.enzymes[n] for n in enzyme_names] # <- passed in enzyme concentrations dict
-            + [self.constants[n] for n in const_names] # <- passed in kinetic constants dict
-        )
-        x_sim = eval_xf(p_val) # evaluate the solution at the parameter values  
+        Solves the algebraic equation system:
+            S @ v(C, e; params) = 0
+        where S is the stoichiometric matrix and v is the flux vector computed by
+        compute_fluxes().
+        For this the following nlp problem is solved:
+        min || S @ v(C_balanced, C_unbalanced, e; params) ||_2^2
+        s.t. 
+            xlb <= C_balanced <= xub
+            ulb <= C_unbalanced <= uub
+        
+        then we return the C_balanced that minimizes the norm and the corresponding fluxes v.
+        
+        
+        Parameters
+        ----------
+        params : dict
+            Kinetic parameters (Km, kcat, kI, kA, etc.).
+        enzymes : dict
+            Enzyme concentrations keyed by gene name (e.g. 'PfkB', 'GapA').
+        metabolites : dict
+            Initial metabolite concentrations keyed as 'C_<name>' (e.g. 'C_pep').
+        opts : dict, optional
+            Simulation options (e.g. tolerances, max iterations).
 
-        x_sim = x_sim.full().T
-        return tspan, pd.DataFrame(x_sim, columns=dyn_names)
+        Returns
+        -------
+        pd.DataFrame
+            Final metabolite concentrations keyed by name.
+        """
+        # solve the system with pyomo
+        
+        ### define the optimization problem
+        ss_model = pyo.ConcreteModel()
+        # variables to define
+        # balanced metabolites
+        ss_model.C_balanced = pyo.Var(self.balanced_keys, domain=pyo.NonNegativeReals, bounds=(0, 1e3))
+        # unbalanced metabolites
+        ss_model.C_unbalanced = pyo.Var(self.unbalanced_keys, domain=pyo.NonNegativeReals, bounds=self.bounds_unbalanced_mets)
+        # enzymes
+        ss_model.e = pyo.Param(enzymes.keys(), initialize=enzymes, mutable=False)
+        ss_model.kenetic_params = pyo.Param(kenetic_params.keys(), initialize=kenetic_params, mutable=False)
+        # constraints <- defined in the variables 
+        # objective <- S @ v(C_x, C_u, e; params) = 0
+        # sense min
+        def objective_rule(model):
+            C_balanced = {met: model.C_balanced[met] for met in self.balanced_keys}
+            C_unbalanced = {met: model.C_unbalanced[met] for met in self.unbalanced_keys}
+            e = {enzyme: model.e[enzyme] for enzyme in enzymes.keys()}
+            params = {param: model.kenetic_params[param] for param in kenetic_params.keys()}
+            v = self.compute_fluxes(C_balanced, C_unbalanced, e, params)
+            S = self.stoichiometric_matrix.values
+            return sum((S @ v)[i]**2 for i in range(S.shape[0]))
+        ss_model.objective = pyo.Objective(rule=objective_rule, sense=pyo.minimize)
+        # ipopt solver
+        solver = pyo.SolverFactory('ipopt')
+        # solve
+        solver.solve(ss_model)
+        # get optimal solution
+        f_sol = pyo.value(ss_model.objective)
+        # get balanced metabolites and unbalanced metabolites
+        concentration_balanced_mets = {met: pyo.value(ss_model.C_balanced[met]) for met in self.balanced_keys}
+        concentration_unbalanced_mets = {met: pyo.value(ss_model.C_unbalanced[met]) for met in self.unbalanced_keys}
+        # calculate the fluxes
+        fluxes_res = self.compute_fluxes(concentration_balanced_mets, concentration_unbalanced_mets, enzymes, kenetic_params)
+        # return the balanced metabolites and the fluxes
+        dictionary_fluxes = {reaction: fluxes_res[i] for i, reaction in enumerate(REVERSE_REACTION_MAP.keys())}
+        
+        return concentration_balanced_mets, dictionary_fluxes, f_sol
+        
+
+        
+
+        
+
 
     def _construct_stoichiometric_matrix(self) -> pd.DataFrame:
         """
@@ -738,7 +726,7 @@ def load_params(csv_path: str) -> dict:
     param_dict["Ka1_1"] = 1  # mM
     param_dict["Ka2_1"] = 0.01  # mM
     param_dict["Ka3_1"] = 1  # mM
-    param_dict["n_g6p_1"] = 4  # unitless
+    # param_dict["n_g6p_1"] = 4  # unitless HARD CODED AS HILL COEFCIINET
     param_dict["K_g6p_1"] = 0.5  # mM
     # data from Brenda
     for _, row in param_df.iterrows():
@@ -766,30 +754,7 @@ def load_params(csv_path: str) -> dict:
     return param_dict
 
 
-def merge_and_fill(param_dict: dict, random_state: int = 42) -> dict:
-    param_dict_merged = param_dict.copy()
 
-    np.random.seed(random_state)
-    for key, values in param_dict.items():
-        if isinstance(values, list):
-            # take the mean of the values if there are multiple entries
-            param_dict_merged[key] = np.mean(values)
-        elif values is not None:
-            param_dict_merged[key] = values
-        else:
-            param_dict_merged[key] = scipy.stats.gamma(
-                a=2, scale=1
-            ).rvs()  # sample from a gamma distribution as a placeholder
-    return param_dict_merged
-
-def plot_trayectories(sol_casadi, t, names):
-    fig, ax = plt.subplots(figsize=(10, 6))
-    for i, name in enumerate(names):
-        ax.plot(t, sol[:, i], label=name)
-    ax.set_xlabel("Time (h)")
-    ax.set_ylabel("Concentration (mM)")
-    ax.legend()
-    
     
 # %%
 if __name__ == "__main__":
@@ -871,7 +836,7 @@ if __name__ == "__main__":
         "Km_2pg_9": 0.1,
         "Km_pep_9": 0.5,
     }
-    metabolites = {
+    metabolites_balanced = {
         # balanced
         "C_2pg": 2.84e-5,
         "C_3pg": 4.52e-4,
@@ -881,7 +846,9 @@ if __name__ == "__main__":
         "C_g3p": 4.23e-7,
         "C_g6p": 2.45e-4,
         "C_pep": 1.02e-4,
-        "C_pgp": 2.56e-6,
+        "C_pgp": 2.56e-6
+    }
+    metabolites_unbalanced = {
         # fixed
         "C_atp": 0.1,
         "C_adp": 0.01,
@@ -904,14 +871,23 @@ if __name__ == "__main__":
         "GpmA": 0.1,
         "Eno": 0.1,
     }
-    model = EcoliCarbonKinetics(metabolites, enzymes, constants)
-    opts = {                                                                                                                 
-        "max_num_steps": 1e100,                                                                                            
-        "constraints": [1, 1, 1, 1, 1, 1, 1, 1, 1],
-        "reltol": 1e-10,                                                                                                      
-        "abstol": 1e-8,                                                                                                      
-    }   
-    sol = model.simulate_system(tspan=(0, 10000), opts=opts)
-    # plot_trayectories(sol, np.linspace(0, 10000, 100), model.stoichiometric_matrix.index)
+    model = EcoliCarbonKinetics(
+        bounds_unbalanced_mets = {
+            "C_atp": (0.01, 1.0),
+            "C_adp": (0.001, 0.1),
+            "C_amp": (0.001, 0.1),
+            "C_gdp": (0.001, 0.1),
+            "C_glc": (0.001, 10.0),
+            "C_gtp": (0.001, 0.1),
+            "C_nad": (0.001, 0.1),
+            "C_nadh": (0.001, 0.1),
+            "C_pi": (0.001, 10.0),
+            "C_pyr": (0.001, 10.0),
+        }
+    )
     
+    solved_concentrations = model.solve_steady_state(
+        enzymes=enzymes,
+        kenetic_params=constants,
+    )
     # %%
