@@ -7,6 +7,8 @@ Each reaction is modeled with convenient kinetic rate laws that include substrat
 """
 
 # %%
+import time
+
 import numpy as np
 import pandas as pd
 import casadi as ca
@@ -204,11 +206,119 @@ class EcoliCarbonKinetics:
         9x9 stoichiometric matrix N (metabolites x reactions).
     """
     balanced_keys = ["C_g6p", "C_f6p", "C_fbp", "C_dhap", "C_g3p", "C_pgp", "C_3pg", "C_2pg", "C_pep"]
-    unbalanced_keys = ["C_atp", "C_adp", "C_amp", "C_gtp", "C_gdp", "C_nad", "C_nadh", "C_pi", "C_pyr", "C_glc"]
-
-    def __init__(self, bounds_unbalanced_mets: dict):
+    imbalanced_keys = ["C_atp", "C_adp", "C_amp", "C_gtp", "C_gdp", "C_nad", "C_nadh", "C_pi", "C_pyr", "C_glc"]
+    enzymes_keys = ["Pgi", "PfkB", "FbaA", "TpiA", "GapA", "Pgk", "GpmA", "Eno"]
+    flux_keys = ['v_pts', 'v_pgi', 'v_pfkB', 'v_fbaA', 'v_tpiA', 'v_gapA', 'v_pgk',
+       'v_gpmA', 'v_eno']
+    params_keys = [
+    # PTS
+    "kI_pyr_1",
+    "kA_pep_1",
+    "v_max_1",
+    "Ka1_1",
+    "Ka2_1",
+    "Ka3_1",
+    # "n_g6p_1", HARD CODED AS HILL COEFFICIENT
+    "K_g6p_1",
+    # PGI
+    "kI_pep_2",
+    "Km_g6p_2",
+    "Km_f6p_2",
+    "kcat_f_2",
+    "kcat_r_2",
+    # PFK
+    "kI_f6p_3",
+    "kI_fbp_3",
+    "kI_gtp_3",
+    "kI_pep_3",
+    "kI_pi_3",
+    "kA_adp_3",
+    "kA_gdp_3",
+    "Km_f6p_3",
+    "Km_atp_3",
+    "Km_fbp_3",
+    "Km_adp_3",
+    "kcat_f_3",
+    "kcat_r_3",
+    # FBA
+    "kI_3pg_4",
+    "kI_dhap_4",
+    "kI_g3p_4",
+    "kA_pep_4",
+    "kcat_f_4",
+    "kcat_r_4",
+    "Km_fbp_4",
+    "Km_g3p_4",
+    "Km_dhap_4",
+    # TPI
+    "kcat_f_5",
+    "kcat_r_5",
+    "Km_dhap_5",
+    "Km_g3p_5",
+    # GAPDH
+    "kI_adp_6",
+    "kI_amp_6",
+    "kI_atp_6",
+    "kcat_f_6",
+    "kcat_r_6",
+    "Km_g3p_6",
+    "Km_pi_6",
+    "Km_nad_6",
+    "Km_pgp_6",
+    "Km_nadh_6",
+    # PGK
+    "kA_3pg_7",
+    "kA_atp_7",
+    "kcat_f_7",
+    "kcat_r_7",
+    "Km_pgp_7",
+    "Km_adp_7",
+    "Km_3pg_7",
+    "Km_atp_7",
+    # GPM
+    "kI_pi_8",
+    "kcat_f_8",
+    "kcat_r_8",
+    "Km_3pg_8",
+    "Km_2pg_8",
+    # ENO
+    "kcat_f_9",
+    "kcat_r_9",
+    "Km_2pg_9",
+    "Km_pep_9",
+]
+    def __init__(self, bounds_imbalanced_mets: dict, bounds_balanced_mets: dict, 
+                options: dict = {"ipopt": {
+                 "print_level": 0,
+                 "sb": "yes",
+                 "mu_strategy": "adaptive",
+                 "tol": 1e-6,
+                 "warm_start_init_point": "yes",
+                 "warm_start_bound_push": 1e-6,
+                 "warm_start_mult_bound_push": 1e-6,
+             }, "print_time": 0},
+                ss_tolerance: float = 1e-6):
         self.stoichiometric_matrix = self._construct_stoichiometric_matrix()
-        self.bounds_unbalanced_mets = bounds_unbalanced_mets
+        self.bounds_imbalanced_mets = bounds_imbalanced_mets
+        self.bounds_balanced_mets = bounds_balanced_mets
+        self.opts = options # options for the ipopt solver, e.g. {"ipopt": {"print_level": 0}} to suppress output
+        self.ss_tolerance = ss_tolerance # tolerance for steady-state constraints (can be relaxed to allow near-steady-state solutions)
+        # Pre-compute bounds and default x0 once
+        self._lbx = np.array(
+            [bounds_balanced_mets[k][0]   for k in self.balanced_keys] +
+            [bounds_imbalanced_mets[k][0] for k in self.imbalanced_keys]
+        )
+        self._ubx = np.array(
+            [bounds_balanced_mets[k][1]   for k in self.balanced_keys] +
+            [bounds_imbalanced_mets[k][1] for k in self.imbalanced_keys]
+        )
+        self._x0_default = np.sqrt(self._lbx * self._ubx)  # geometric mean
+
+        # Warm-start cache: one entry per experimental condition
+        self._warm_start_cache: dict[str, np.ndarray] = {}
+
+        
+        self.construct_steady_state_problem()
     def pts(self, constants: dict, C: dict, e: dict) -> float:
         """
         Phosphotransferase system (PTS).
@@ -324,8 +434,8 @@ class EcoliCarbonKinetics:
             (C_pi, kI_pi_3),
         ]:
             h *= kI / (kI + conc)
-        for conc, kA in [(C_adp, kA_adp_3), (C_gdp, kA_gdp_3)]:
-            h *= conc / (kA + conc)
+        # for conc, kA in [(C_adp, kA_adp_3), (C_gdp, kA_gdp_3)]:
+        #     h *= conc / (kA + conc)
 
         num = kcat_f_3 * (C_f6p / Km_f6p_3) * (C_atp / Km_atp_3) - kcat_r_3 * (
             C_fbp / Km_fbp_3
@@ -555,14 +665,14 @@ class EcoliCarbonKinetics:
         return e["Eno"] * num / den
 
 
-    def compute_fluxes(self, C_balanced, C_unbalanced, e, parameters) -> np.ndarray:
+    def compute_fluxes(self, C, e, constants) -> np.ndarray:
         """
         Evaluate all 9 reaction fluxes at metabolite concentrations C.
 
         Parameters
         ----------
         C : dict
-            Full concentration dict (balanced + unbalanced metabolites).
+            Full concentration dict (balanced + imbalanced metabolites).
         e : dict
             Enzyme concentrations.
         constants : dict
@@ -570,15 +680,9 @@ class EcoliCarbonKinetics:
 
         Returns
         -------
-        np.ndarray, shape (9,)
+        list, shape (9,)
             Flux vector [v1, ..., v9].
         """
-        C = {
-            **{f"{met}": conc for met, conc in C_balanced.items()},
-            **{f"{met}": conc for met, conc in C_unbalanced.items()},
-        }
-        constants = parameters
-        e = e
         
         return [
             self.pts(constants, C, e),
@@ -593,27 +697,141 @@ class EcoliCarbonKinetics:
         ]
         
         
+    def build_parameter_estimation_nlp(self,
+                                    conditions_enzymes : list[dict],
+                                    conditions_obs     : list[pd.Series],
+                                    bounds_params      : dict,
+                                    ipopt_opts      : dict
+                                    ):
+        """
+        Extends the solve_steady_state objective (||S@v||²) to also cover
+        parameter estimation, by adding theta as decision variables and a
+        data-fitting term. Pure box-constrained NLP — no equality constraints.
+
+        Objective = Σ_k [ ss_weight * ||S @ v_k(C_k, θ, e_k)||²
+                        +             ||predicted_k - observed_k||² ]
+
+        Parameters
+        ----------
+        ss_weight : weight on the steady-state residual term relative to
+                    the data-fitting term. Start with 1.0 and increase if
+                    the solver finds solutions far from steady state.
+        """
+        N     = len(conditions_enzymes)
+        n_par = len(self.params_keys)
+        S     = ca.DM(self.stoichiometric_matrix.values)
+
+        # Decision variables: kinetic parameters + concentrations per condition
+        theta = ca.SX.sym("theta", n_par)
+        C_all = [ca.SX.sym(f"C_{k}", len(self.balanced_keys) + len(self.imbalanced_keys))
+                for k in range(N)]
+
+        constants = {key: theta[i] for i, key in enumerate(self.params_keys)}
+        obj = ca.SX(0)
+        ss_list = [] # steady-state constraints
+        for k in range(N):
+            C_k     = C_all[k]
+            C_bal   = {key: C_k[i]                           for i, key in enumerate(self.balanced_keys)}
+            C_imbal = {key: C_k[i + len(self.balanced_keys)] for i, key in enumerate(self.imbalanced_keys)}
+            enzymes_k = {key: float(conditions_enzymes[k][key]) for key in self.enzymes_keys}
+
+            fluxes_k = self.compute_fluxes({**C_bal, **C_imbal}, enzymes_k, constants)
+
+            # steady-state residual term
+            ss_list.append(S @ ca.vertcat(*fluxes_k))
+
+            # Term 2: fit to observed concentrations and/or fluxes
+            pred = {**C_bal,
+                    **{self.flux_keys[i]: fluxes_k[i] for i in range(len(fluxes_k))}}
+            for var_name in conditions_obs[k].index:
+                obs_val = conditions_obs[k][var_name]
+                if not np.isnan(float(obs_val)) and var_name in pred:
+                    obj += ((pred[var_name] - float(obs_val)) / (abs(float(obs_val)) + 1e-12)) ** 2
+
+        # Assemble variable vector and bounds
+        x        = ca.vertcat(theta, *C_all)
+        lb_theta = np.array([bounds_params[k][0] for k in self.params_keys])
+        ub_theta = np.array([bounds_params[k][1] for k in self.params_keys])
+        lb_x     = np.concatenate([lb_theta] + [self._lbx] * N)
+        ub_x     = np.concatenate([ub_theta] + [self._ubx] * N)
+
+        # Auto-size bounds from the actual constraint vector — avoids any mismatch
+        g    = ca.vertcat(*ss_list)
+        n_g  = g.shape[0]
+        lbg  = - np.ones(n_g) * self.ss_tolerance
+        ubg  = np.ones(n_g) * self.ss_tolerance
+        print(f"[DEBUG] {N} conditions {n_g // N} constraints/condition = {n_g} total")
+
+        if ipopt_opts is None:
+            ipopt_opts = {
+                "ipopt": {
+                    "print_level": 0, "sb": "yes",
+                    "mu_strategy": "adaptive",
+                    "tol": 1e-4, "max_iter": 3000,
+                },
+                "print_time": 0,
+            }
+        else: 
+            ipopt_opts = ipopt_opts
+
+        solver = ca.nlpsol("pe_solver", "ipopt",
+                        {"x": x, "f": obj, "g": g}, ipopt_opts)
+        return solver, lb_x, ub_x, lbg, ubg
+
+
+    def construct_steady_state_problem(self):
+        """
+        Solves the feasibility problem:
+            min || S @ v(C_balanced, C_imbalanced, e; params) - b ||_2^2
+            s.t.
+                lb_balanced <= C_balanced <= ub_balanced
+                lb_imbalanced <= C_imbalanced <= ub_imbalanced
+        where b is the cell needs.
+        """
+        n_variables = len(self.balanced_keys) + len(self.imbalanced_keys)
+
+        C_sym = ca.SX.sym("C", n_variables)
+        k_sym = ca.SX.sym("k", len(self.params_keys))
+        e_sym = ca.SX.sym("e", len(self.enzymes_keys))
+        b_sym = ca.SX.sym("b", self.stoichiometric_matrix.shape[0])  # = 9
+
+        C_balanced   = {key: C_sym[i] for i, key in enumerate(self.balanced_keys)}
+        C_imbalanced = {key: C_sym[i + len(self.balanced_keys)] for i, key in enumerate(self.imbalanced_keys)}
+        constants    = {key: k_sym[i] for i, key in enumerate(self.params_keys)}
+        enzymes      = {key: e_sym[i] for i, key in enumerate(self.enzymes_keys)}
+
+        fluxes = self.compute_fluxes({**C_balanced, **C_imbalanced}, enzymes, constants)
+        S = ca.DM(self.stoichiometric_matrix.values)
+
+        f = ca.sumsqr(S @ ca.vertcat(*fluxes) - b_sym)
+        nlp = {
+            "x": C_sym,
+            "f": f,                      # feasibility — no objective
+            "p": ca.vertcat(k_sym, e_sym, b_sym),
+        }
+        self.solver = ca.nlpsol("solver", "ipopt", nlp, self.opts)
         
-
-
-
+    
+        
+        
     def solve_steady_state(self, 
                            enzymes            : dict, # dictionary of enzyme concentrations
-                           kenetic_params     : dict, # dictionary of kinetic parameters
-                           opts               : dict = None, # options for the rootfinder
+                           cell_needs         : dict, # dictionary of cell needs (b vector)
+                           kinetic_params     : dict, # dictionary of kinetic parameters
+                           condition_key  : str = None
                            ):
         """
         Simulate the kinetic system to steady state using CasADi/CVODES.
 
         Solves the algebraic equation system:
-            S @ v(C, e; params) = 0
+            S @ v(C, e; params) - b = 0
         where S is the stoichiometric matrix and v is the flux vector computed by
         compute_fluxes().
         For this the following nlp problem is solved:
-        min || S @ v(C_balanced, C_unbalanced, e; params) ||_2^2
+        min || S @ v(C_balanced, C_imbalanced, e; params) - b ||_2^2
         s.t. 
             xlb <= C_balanced <= xub
-            ulb <= C_unbalanced <= uub
+            ulb <= C_imbalanced <= uub
         
         then we return the C_balanced that minimizes the norm and the corresponding fluxes v.
         
@@ -634,52 +852,37 @@ class EcoliCarbonKinetics:
         pd.DataFrame
             Final metabolite concentrations keyed by name.
         """
-        # solve the system with pyomo
         
-        ### define the optimization problem
-        ss_model = pyo.ConcreteModel()
-        # variables to define
-        # balanced metabolites
-        ss_model.C_balanced = pyo.Var(self.balanced_keys, domain=pyo.NonNegativeReals, bounds=(0, 1e3))
-        # unbalanced metabolites
-        ss_model.C_unbalanced = pyo.Var(self.unbalanced_keys, domain=pyo.NonNegativeReals, bounds=self.bounds_unbalanced_mets)
-        # enzymes
-        ss_model.e = pyo.Param(enzymes.keys(), initialize=enzymes, mutable=False)
-        ss_model.kenetic_params = pyo.Param(kenetic_params.keys(), initialize=kenetic_params, mutable=False)
-        # constraints <- defined in the variables 
-        # objective <- S @ v(C_x, C_u, e; params) = 0
-        # sense min
-        def objective_rule(model):
-            C_balanced = {met: model.C_balanced[met] for met in self.balanced_keys}
-            C_unbalanced = {met: model.C_unbalanced[met] for met in self.unbalanced_keys}
-            e = {enzyme: model.e[enzyme] for enzyme in enzymes.keys()}
-            params = {param: model.kenetic_params[param] for param in kenetic_params.keys()}
-            v = self.compute_fluxes(C_balanced, C_unbalanced, e, params)
-            S = self.stoichiometric_matrix.values
-            return sum((S @ v)[i]**2 for i in range(S.shape[0]))
-        ss_model.objective = pyo.Objective(rule=objective_rule, sense=pyo.minimize)
-        # ipopt solver
-        solver = pyo.SolverFactory('ipopt')
-        # solve
-        solver.solve(ss_model)
-        # get optimal solution
-        f_sol = pyo.value(ss_model.objective)
-        # get balanced metabolites and unbalanced metabolites
-        concentration_balanced_mets = {met: pyo.value(ss_model.C_balanced[met]) for met in self.balanced_keys}
-        concentration_unbalanced_mets = {met: pyo.value(ss_model.C_unbalanced[met]) for met in self.unbalanced_keys}
-        # calculate the fluxes
-        fluxes_res = self.compute_fluxes(concentration_balanced_mets, concentration_unbalanced_mets, enzymes, kenetic_params)
-        # return the balanced metabolites and the fluxes
-        dictionary_fluxes = {reaction: fluxes_res[i] for i, reaction in enumerate(REVERSE_REACTION_MAP.keys())}
+        # 
+        p = np.array(
+            [kinetic_params[key] for key in self.params_keys] +
+            [enzymes[key]        for key in self.enzymes_keys] +
+            [cell_needs[key]     for key in self.balanced_keys]
+        )
         
-        return concentration_balanced_mets, dictionary_fluxes, f_sol
+        # Use cached warm-start for this condition, or fall back to geometric mean
+        x0 = self._warm_start_cache.get(condition_key, self._x0_default)
+
+        sol = self.solver(
+                    x0=x0,
+                    lbx=self._lbx, ubx=self._ubx,
+                    p=p,
+                )
         
 
-        
+        C_opt = sol["x"].full().flatten()
+        self._warm_start_cache[condition_key] = C_opt  # save for next call
 
-        
+        C_balanced_opt   = {key: C_opt[i] for i, key in enumerate(self.balanced_keys)}
+        C_imbalanced_opt = {key: C_opt[i + len(self.balanced_keys)]
+                            for i, key in enumerate(self.imbalanced_keys)}
 
-
+        fluxes_opt = self.compute_fluxes(
+            {**C_balanced_opt, **C_imbalanced_opt}, enzymes, kinetic_params
+        )
+        dict_v_opt = {self.flux_keys[i]: fluxes_opt[i] for i in range(len(fluxes_opt))}
+        return pd.DataFrame({**C_balanced_opt, **dict_v_opt}, index=[0]), sol['f'].full().item()  # return both concentrations and final objective value (residual norm)
+    
     def _construct_stoichiometric_matrix(self) -> pd.DataFrame:
         """
         Build the 9x9 stoichiometric matrix N (metabolites x reactions).
@@ -848,8 +1051,7 @@ if __name__ == "__main__":
         "C_pep": 1.02e-4,
         "C_pgp": 2.56e-6
     }
-    metabolites_unbalanced = {
-        # fixed
+    metabolites_imbalanced = {
         "C_atp": 0.1,
         "C_adp": 0.01,
         "C_amp": 0.01,
@@ -872,22 +1074,47 @@ if __name__ == "__main__":
         "Eno": 0.1,
     }
     model = EcoliCarbonKinetics(
-        bounds_unbalanced_mets = {
-            "C_atp": (0.01, 1.0),
-            "C_adp": (0.001, 0.1),
-            "C_amp": (0.001, 0.1),
-            "C_gdp": (0.001, 0.1),
+        bounds_imbalanced_mets = {
+            "C_atp": (0.01, 10),
+            "C_adp": (0.001, 10),
+            "C_amp": (0.001, 10),
+            "C_gdp": (0.001, 10),
             "C_glc": (0.001, 10.0),
-            "C_gtp": (0.001, 0.1),
-            "C_nad": (0.001, 0.1),
-            "C_nadh": (0.001, 0.1),
+            "C_gtp": (0.001, 10),
+            "C_nad": (0.001, 10),
+            "C_nadh": (0.001, 10),
             "C_pi": (0.001, 10.0),
             "C_pyr": (0.001, 10.0),
-        }
+        },
+        bounds_balanced_mets= {
+            "C_2pg": (1e-6, 1),
+            "C_3pg": (1e-6, 1e-3),
+            "C_dhap": (1e-6, 1e-3),
+            "C_f6p": (1e-6, 1e-3),
+            "C_fbp": (1e-6, 1e-3),
+            "C_g3p": (1e-6, 1e-3),
+            "C_g6p": (1e-6, 1e-3),
+            "C_pep": (1e-6, 1e-3),
+            "C_pgp": (1e-6, 1e-3)
+        },
     )
-    
+    ti = time.time()
+
+    b = {
+        "C_2pg": 0.0,
+        "C_3pg": 0.0,
+        "C_dhap": 0.0,
+        "C_f6p": 0.0,
+        "C_fbp": 0.0,
+        "C_g3p": 0.0,
+        "C_g6p": 0.0,
+        "C_pep": 0.0,
+        "C_pgp": 0.0
+    }
     solved_concentrations = model.solve_steady_state(
         enzymes=enzymes,
-        kenetic_params=constants,
+        kinetic_params=constants,   
+        cell_needs=b,     
     )
+    print(time.time() - ti)
     # %%

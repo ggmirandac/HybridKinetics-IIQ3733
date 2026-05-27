@@ -257,3 +257,8 @@ Model/fetch_brenda.py
 
 *.pdf
 
+/.claude/*
+.claude/
+fetch_brenda.py
+*.zip
+ws14_pypesto.ipynb
