@@ -28,8 +28,8 @@ ALL_PARAMS = [
     "Ka3_1",
     "K_g6p_1",
     # PGI  (Noor formulation)
-    "Ks_g6p_pgi",
-    "Kp_f6p_pgi",
+    "Ks_g6p_2",
+    "Kp_f6p_2",
     "kcat_f_2",
     # PFK  (Noor formulation)
     "Ks_f6p_3",
@@ -77,7 +77,7 @@ PARAM_RXN_MAP = {
         "Ka3_1",
         "K_g6p_1",
     ],
-    "pgi": ["Ks_g6p_pgi", "Kp_f6p_pgi", "kcat_f_2"],
+    "pgi": ["Ks_g6p_2", "Kp_f6p_2", "kcat_f_2"],
     "pfk": ["Ks_f6p_3", "Ks_atp_3", "Kp_fbp_3", "Kp_adp_3", "kcat_f_3"],
     "fba": ["Ks_fbp_4", "Kp_g3p_4", "Kp_dhap_4", "kcat_f_4"],
     "tpi": ["kcat_f_5", "Ks_dhap_5", "Kp_g3p_5"],
@@ -154,8 +154,8 @@ class EcoliCarbonKinetics:
         "Ka3_1",
         "K_g6p_1",
         # PGI
-        "Ks_g6p_pgi",
-        "Kp_f6p_pgi",
+        "Ks_g6p_2",
+        "Kp_f6p_2",
         "kcat_f_2",
         # PFK
         "Ks_f6p_3",
@@ -300,15 +300,15 @@ class EcoliCarbonKinetics:
         C keys         : C_g6p, C_f6p
         e keys         : Pgi
         """
-        Ks_g6p_pgi = constants["Ks_g6p_pgi"]
-        Kp_f6p_pgi = constants["Kp_f6p_pgi"]
+        Ks_g6p_2 = constants["Ks_g6p_2"]
+        Kp_f6p_2 = constants["Kp_f6p_2"]
         kcat_f_2   = constants["kcat_f_2"]
 
         C_g6p = C["C_g6p"]
         C_f6p = C["C_f6p"]
 
-        kappa = (C_g6p / Ks_g6p_pgi) / (1 + C_g6p / Ks_g6p_pgi + C_f6p / Kp_f6p_pgi)
-        dGr   = self.D_gR_circ["pgi"] + self.R * self.T * np.log(C_f6p / C_g6p)
+        kappa = (C_g6p / Ks_g6p_2) / (1 + C_g6p / Ks_g6p_2 + C_f6p / Kp_f6p_2)
+        dGr   = self.D_gR_circ["pgi"] + self.R * self.T * np.log((C_f6p+1e-9) / (C_g6p+1e-9))
         gamma = 1 - np.exp(-dGr / (self.R * self.T))
 
         return e["Pgi"] * kcat_f_2 * kappa * gamma
@@ -345,7 +345,7 @@ class EcoliCarbonKinetics:
         kappa = prod_subs / (1 + prod_subs + prod_prods)
 
         dGr   = self.D_gR_circ["pfk"] + self.R * self.T * np.log(
-            (C_fbp * C_adp) / (C_f6p * C_atp)
+            ((C_fbp * C_adp)+1e-9) / ((C_f6p * C_atp)+1e-9)
         )
         gamma = 1 - np.exp(-dGr / (self.R * self.T))
 
