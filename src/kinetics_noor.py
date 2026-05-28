@@ -19,6 +19,7 @@ import casadi as ca
 import matplotlib.pyplot as plt
 import scipy
 import pyomo.environ as pyo
+from torch import frac_
 
 ALL_PARAMS = [
     # PTS (empirical formulation — unchanged)
@@ -235,22 +236,22 @@ class EcoliCarbonKinetics:
 
         self.construct_steady_state_problem()
 
-    def construct_dGR(self):
+    def construct_Keq(self):
         # Standard Gibbs free energy changes for each reaction (kJ/mol)
         # Source: https://equilibrator.weizmann.ac.il/
-        dG0_prime = {
-            "pgi": 2.6,    # kJ/mol
-            "pfk": -17.8,  # kJ/mol
-            "fba": 23.2,   # kJ/mol
-            "tpi": -5.6,   # kJ/mol
-            "gap": 1.2,    # kJ/mol
-            "pgk": 19.5,   # kJ/mol
-            "gpm": -4.5,   # kJ/mol
-            "eno": -3.8,   # kJ/mol
+        # used pH 7. and ionic strength 0.1 M
+        Keq_prime = {
+            "pgi": 0.4,    # cte
+            "pfk": 1.8e2,  # cte
+            "fba": 1.3e-4,   # cte #TODO: REEVOAR ESTE VALOR Y CALCULARLO DGR^M 
+            "tpi": 1e01,   # cte
+            "gap": 0.1,    # cte
+            "pgk": 4.3e-4,   # cte
+            "gpm": 0.2,   # cte
+            "eno": 5,   # cte
         }
         # Convert to J/mol
-        self.D_gR_circ = {rxn: dG0_prime[rxn] * 1000 for rxn in dG0_prime}
-
+        self.Keq = Keq_prime
     # ------------------------------------------------------------------
     # Flux methods
     # ------------------------------------------------------------------
@@ -308,8 +309,8 @@ class EcoliCarbonKinetics:
         C_f6p = C["C_f6p"]
 
         kappa = (C_g6p / Ks_g6p_pgi) / (1 + C_g6p / Ks_g6p_pgi + C_f6p / Kp_f6p_pgi)
-        dGr   = self.D_gR_circ["pgi"] + self.R * self.T * np.log(C_f6p / C_g6p)
-        gamma = 1 - np.exp(-dGr / (self.R * self.T))
+        frac_prod_subs = C_f6p / C_g6p
+        gamma = 1 - frac_prod_subs/self.Keq["pgi"]
 
         return e["Pgi"] * kcat_f_2 * kappa * gamma
 
@@ -344,10 +345,8 @@ class EcoliCarbonKinetics:
         prod_prods = (C_fbp / Kp_fbp_3) * (C_adp / Kp_adp_3)
         kappa = prod_subs / (1 + prod_subs + prod_prods)
 
-        dGr   = self.D_gR_circ["pfk"] + self.R * self.T * np.log(
-            (C_fbp * C_adp) / (C_f6p * C_atp)
-        )
-        gamma = 1 - np.exp(-dGr / (self.R * self.T))
+        frac_prod_subs = (C_fbp * C_adp) / (C_f6p * C_atp)
+        gamma = 1 - frac_prod_subs/self.Keq["pfk"]
 
         return e["PfkB"] * kcat_f_3 * kappa * gamma
 
@@ -379,16 +378,15 @@ class EcoliCarbonKinetics:
         prod_prods = (C_g3p / Kp_g3p_4) * (C_dhap / Kp_dhap_4)
         kappa = prod_subs / (1 + prod_subs + prod_prods)
 
-        dGr   = self.D_gR_circ["fba"] + self.R * self.T * np.log(
-            (C_g3p * C_dhap) / C_fbp
-        )
-        gamma = 1 - np.exp(-dGr / (self.R * self.T))
+        frac_prod_subs = (C_g3p * C_dhap) / C_fbp
+        
+        gamma = 1 - frac_prod_subs/self.Keq["fba"]
 
         return e["FbaA"] * kcat_f_4 * kappa * gamma
 
     def tpi(self, constants: dict, C: dict, e: dict) -> float:
         """
-        Triosephosphate isomerase (TPI).
+        Triose-phosphate isomerase (TPI).
         EC: 5.3.1.1
 
         Reaction : dhap <=> g3p
@@ -411,8 +409,8 @@ class EcoliCarbonKinetics:
         prod_prods = C_g3p  / Kp_g3p_5
         kappa = prod_subs / (1 + prod_subs + prod_prods)
 
-        dGr   = self.D_gR_circ["tpi"] + self.R * self.T * np.log(C_g3p / C_dhap)
-        gamma = 1 - np.exp(-dGr / (self.R * self.T))
+        frac_prod_subs = C_g3p / C_dhap
+        gamma = 1 - frac_prod_subs/self.Keq["tpi"]
 
         return e["TpiA"] * kcat_f_5 * kappa * gamma
 
@@ -448,10 +446,8 @@ class EcoliCarbonKinetics:
         prod_prods = (C_pgp / Kp_pgp_6) * (C_nadh / Kp_nadh_6)
         kappa = prod_subs / (1 + prod_subs + prod_prods)
 
-        dGr   = self.D_gR_circ["gap"] + self.R * self.T * np.log(
-            (C_pgp * C_nadh) / (C_g3p * C_pi * C_nad)
-        )
-        gamma = 1 - np.exp(-dGr / (self.R * self.T))
+        frac_prod_subs = (C_pgp * C_nadh) / (C_g3p * C_pi * C_nad)
+        gamma = 1 - frac_prod_subs/self.Keq["gap"]
 
         return e["GapA"] * kcat_f_6 * kappa * gamma
 
@@ -486,10 +482,8 @@ class EcoliCarbonKinetics:
         prod_prods = (C_3pg / Ks_3pg_7) * (C_atp / Ks_atp_7)
         kappa = prod_subs / (1 + prod_subs + prod_prods)
 
-        dGr   = self.D_gR_circ["pgk"] + self.R * self.T * np.log(
-            (C_3pg * C_atp) / (C_pgp * C_adp)
-        )
-        gamma = 1 - np.exp(-dGr / (self.R * self.T))
+        frac_prod_subs = (C_3pg * C_atp) / (C_pgp * C_adp)
+        gamma = 1 - frac_prod_subs/self.Keq["pgk"]
 
         return e["Pgk"] * kcat_f_7 * kappa * gamma
 
@@ -519,8 +513,8 @@ class EcoliCarbonKinetics:
         prod_prods = C_2pg / Ks_2pg_8
         kappa = prod_subs / (1 + prod_subs + prod_prods)
 
-        dGr   = self.D_gR_circ["gpm"] + self.R * self.T * np.log(C_2pg / C_3pg)
-        gamma = 1 - np.exp(-dGr / (self.R * self.T))
+        frac_prod_subs = C_2pg / C_3pg
+        gamma = 1 - frac_prod_subs/self.Keq["gpm"]
 
         return e["GpmA"] * kcat_f_8 * kappa * gamma
 
@@ -549,8 +543,8 @@ class EcoliCarbonKinetics:
         prod_prods = C_pep / Ks_pep_9
         kappa = prod_subs / (1 + prod_subs + prod_prods)
 
-        dGr   = self.D_gR_circ["eno"] + self.R * self.T * np.log(C_pep / C_2pg)
-        gamma = 1 - np.exp(-dGr / (self.R * self.T))
+        frac_prod_subs = C_pep / C_2pg
+        gamma = 1 - frac_prod_subs/self.Keq["eno"]
 
         return e["Eno"] * kcat_f_9 * kappa * gamma
 
@@ -696,7 +690,7 @@ class EcoliCarbonKinetics:
     def solve_steady_state(self,
                            enzymes:        dict,
                            kinetic_params: dict,
-                           cell_needs:     dict | None = None,
+                           cell_needs:     dict,
                            condition_key:  str  | None = None):
         """
         Find metabolite concentrations that minimise || S @ v - b ||_2^2.
@@ -719,8 +713,6 @@ class EcoliCarbonKinetics:
         pd.DataFrame
             Optimal balanced concentrations and fluxes.
         """
-        if cell_needs is None:
-            cell_needs = {key: 0.0 for key in self.balanced_keys}
 
         p = np.array(
             [kinetic_params[key] for key in self.params_keys] +
@@ -743,11 +735,11 @@ class EcoliCarbonKinetics:
         )
         dict_v_opt = {self.flux_keys[i]: fluxes_opt[i] for i in range(len(fluxes_opt))}
         return pd.DataFrame({**C_balanced_opt, **dict_v_opt}, index=[0]), sol["f"].full().item()
-
+    
     def _construct_stoichiometric_matrix(self) -> pd.DataFrame:
         """
-        Build the 9×9 stoichiometric matrix N (metabolites × reactions).
-
+        Build the 9x9 stoichiometric matrix N (metabolites x reactions).
+        
         Rows    : 2pg, 3pg, dhap, f6p, fbp, g3p, g6p, pep, pgp
         Columns : pts, pgi, pfk, fba, tpi, gap, pgk, gpm, eno
         """
