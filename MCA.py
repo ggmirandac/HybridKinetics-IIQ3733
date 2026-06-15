@@ -31,6 +31,8 @@ Usage
 import numpy as np
 import pandas as pd
 import casadi as ca
+import pickle
+from src.kinetics_noor import EcoliCarbonKinetics
 
 
 def compute_elasticities(model, enzymes, kinetic_params, cell_needs,
@@ -232,3 +234,48 @@ def run_mca(model, enzymes, kinetic_params, cell_needs, condition_key=None, tol=
 if __name__ == "__main__":
     print("Import run_mca(model, enzymes, kinetic_params, cell_needs, condition_key=...) "
           "and call it with your fitted model/parameters/condition.")
+
+
+with open('Data/k_eq_values.pkl', 'rb') as f:
+    k_eq = pickle.load(f)
+
+balanced_met_df   = pd.read_csv('Data/balanced_metabolites.csv', index_col=0)
+imbalanced_met_df = pd.read_csv('Data/imbalanced_metabolites.csv', index_col=0)
+
+# bounds
+imbalanced_bounds = {}
+total_min = 1e12
+for met in imbalanced_met_df.index:
+    
+    imbalanced_bounds[met] = (imbalanced_met_df.loc[met].min()* 0.8, imbalanced_met_df.loc[met].max() * 1.2)
+    if imbalanced_bounds[met][0] < total_min:
+        total_min = imbalanced_bounds[met][0]
+imbalanced_bounds["C_pi"] = (total_min, 10.0)  # Pi is often in the mM range, but can vary widely; set a broad range.
+
+max_max_balanced = balanced_met_df.max().max() * 1.2
+min_min_balanced = 1e-6
+balanced_bounds = {
+    "C_g6p": (min_min_balanced, max_max_balanced), 
+    "C_f6p": (min_min_balanced, max_max_balanced), 
+    "C_fbp": (min_min_balanced, max_max_balanced), 
+    "C_dhap": (min_min_balanced, max_max_balanced), 
+    "C_g3p": (min_min_balanced, max_max_balanced), 
+    "C_pgp": (min_min_balanced, max_max_balanced), 
+    "C_3pg": (min_min_balanced, max_max_balanced), 
+    "C_2pg": (min_min_balanced, max_max_balanced), 
+    "C_pep": (min_min_balanced, max_max_balanced), 
+}
+model = EcoliCarbonKinetics(imbalanced_bounds, balanced_bounds)
+
+# enzymes, kinetic_params, cell_needs - pick one condition from your data
+input_enzyme = pd.read_csv('Data/important_proteins.csv', index_col=0)
+input_cell_needs = pd.read_csv('Data/cellular_needs.csv', index_col=0)
+
+cond_key = "KO02"  # pick a real condition name from your columns
+
+enzymes = input_enzyme[cond_key].to_dict()
+cell_needs = input_cell_needs[cond_key].to_dict()
+kinetic_params = pd.read_csv('outcmaes/parameters.json2') 
+
+
+results = run_mca(model, enzymes, kinetic_params, cell_needs, condition_key="ref")
