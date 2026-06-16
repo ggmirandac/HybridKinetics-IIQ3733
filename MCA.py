@@ -1,8 +1,8 @@
 """
-mca_analysis.py - Metabolic Control Analysis (MCA) for the E. coli
-glycolysis model (EcoliCarbonKinetics, kinetics_noor.py).
+Metabolic Control Analysis (MCA) for the E. coli
+glycolysis model
 
-Computes, at a given steady-state operating point:
+Calculates:
     1. Elasticity matrices:
          eps_v_C   (9 x 9)   d ln v / d ln C_bal   (unscaled -> scaled)
          eps_v_Cimb (9 x 7)  d ln v / d ln C_imbalanced  (informational)
@@ -17,15 +17,8 @@ Computes, at a given steady-state operating point:
          sum_j C_J[:,j] * eps_v_C[j,k] == 0   for each metabolite k  (flux side)
          C_C @ eps_v_C == -I                  (concentration side)
 
-All derivatives are obtained from CasADi (exact, not finite differences),
-reusing the same symbolic machinery as gen_sensitivity_matrix.
-
-Usage
------
-    from mca_analysis import run_mca
-
-    G_total, results = run_mca(model, enzymes, kinetic_params, cell_needs,
-                                condition_key="ref")
+All derivatives are obtained from CasADi,
+reusing the same symbolic machinery as gen_sensitivity_matrix
 """
 
 import numpy as np
@@ -34,19 +27,17 @@ import casadi as ca
 import pickle
 from src.kinetics_noor import EcoliCarbonKinetics
 
-
 def compute_elasticities(model, enzymes, kinetic_params, cell_needs,
                           condition_key=None):
     """
-    Compute scaled (logarithmic) elasticity matrices at the steady state.
-
+    Calculates (logarithmic) elasticity matrices at steady state.
     Returns
     -------
     eps_v_Cbal : ndarray (n_rxn, n_bal)
         Scaled elasticity of each flux wrt each balanced metabolite,
         eps[i,k] = (C_k / v_i) * dv_i/dC_k
     eps_v_Cimb : ndarray (n_rxn, n_imb)
-        Same, wrt imbalanced ("external"/cofactor) metabolites.
+        Scaled elasticity of each flux wrt imbalanced metabolites.
     C_opt, v_opt : operating point concentrations and fluxes (for scaling)
     """
     p = np.array(
@@ -68,7 +59,6 @@ def compute_elasticities(model, enzymes, kinetic_params, cell_needs,
     n_par = len(model.params_keys)
     n_enz = len(model.enzymes_keys)
 
-    # --- Build fresh symbols and rebuild flux expressions ---
     C_s = ca.SX.sym("C", n_var)
     k_s = ca.SX.sym("k", n_par)
     e_s = ca.SX.sym("e", n_enz)
@@ -82,7 +72,6 @@ def compute_elasticities(model, enzymes, kinetic_params, cell_needs,
 
     v_s = ca.vertcat(*model.compute_fluxes(C_dict, e_dict, k_dict))   # (n_rxn,)
 
-    # --- Unscaled elasticities: dv/dC ---
     dv_dC_fn = ca.Function("dv_dC", [C_s, p_s], [ca.jacobian(v_s, C_s)])
     v_fn     = ca.Function("v_fn",  [C_s, p_s], [v_s])
 
@@ -93,8 +82,7 @@ def compute_elasticities(model, enzymes, kinetic_params, cell_needs,
         raise FloatingPointError(
             f"[compute_elasticities] Non-finite entries for condition {condition_key!r}"
         )
-
-    # --- Scale to logarithmic (dimensionless) elasticities ---
+    
     # eps[i,k] = (C_k / v_i) * dv_i/dC_k
     v_safe = np.where(np.abs(v_opt) < 1e-12, 1e-12, v_opt)
     eps_full = dv_dC * (C_opt[np.newaxis, :] / v_safe[:, np.newaxis])
@@ -181,14 +169,12 @@ def check_theorems(model, eps_v_Cbal, C_C, C_J, tol=1e-6):
 def run_mca(model, enzymes, kinetic_params, cell_needs, condition_key=None, tol=1e-6, verbose=True):
     """
     Full MCA pipeline for one steady-state condition.
-
-    Returns
-    -------
+    Returns:
     dict with keys:
         eps_v_Cbal, eps_v_Cimb : elasticity matrices
         C_C, C_J               : control coefficient matrices (as DataFrames)
         C_opt, v_opt           : operating point
-        theorems                : dict of theorem-check results
+        theorems               : dict of theorem-check results
     """
     eps_v_Cbal, eps_v_Cimb, C_opt, v_opt = compute_elasticities(
         model, enzymes, kinetic_params, cell_needs, condition_key=condition_key
@@ -275,7 +261,16 @@ cond_key = "KO02"  # pick a real condition name from your columns
 
 enzymes = input_enzyme[cond_key].to_dict()
 cell_needs = input_cell_needs[cond_key].to_dict()
-kinetic_params = pd.read_csv('outcmaes/parameters.json2') 
+def load_xrecentbest(path, param_keys):
+    with open(path, 'r') as f:
+        lines = [line for line in f if not line.startswith('%')]
+    last_row = lines[-1].split()
+    xbest = np.array(last_row[5:], dtype=float)   # skip iter, evals, sigma, void, fitness
+    if len(xbest) != len(param_keys):
+        raise ValueError(f"Expected {len(param_keys)} params, got {len(xbest)} in {path}")
+    return dict(zip(param_keys, xbest))
+
+kinetic_params = load_xrecentbest('outcmaes/xrecentbest.dat', model.params_keys)
 
 
 results = run_mca(model, enzymes, kinetic_params, cell_needs, condition_key="ref")
