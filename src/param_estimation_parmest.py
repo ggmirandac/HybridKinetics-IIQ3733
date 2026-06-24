@@ -18,6 +18,22 @@ theta (kinetic parameters) are *shared* across all scenarios (parmest's
 Tested against the parmest API shipped with Pyomo >= 6.9.5 (Experiment-based
 interface, ``obj_function='SSE_weighted'`` + ``measurement_error`` suffix,
 ``cov_est`` for covariance).
+
+Quickstart
+----------
+See ``param_estimation_parmest_GUIDE.md`` for two full notebook recipes.
+The following methods work without ipopt (CasADi only):
+
+    est  = GlycolysisParameterEstimator(conditions=["KO02","KO03","KO05"])
+    pred = est.predict()         # Prediction(predicted, real, rmse)
+    r    = est.rmse()            # {met, flux, data_norm}
+    G    = est.sensitivity_matrix()   # {condition: DataFrame 18x37}
+
+The following methods require ipopt:
+
+    theta = est.estimate()       # weighted least squares
+    cov   = est.covariance()     # parameter covariance
+    ms    = est.multistart()     # multistart or bootstrap
 """
 
 from __future__ import annotations
@@ -26,6 +42,7 @@ import os
 import pickle
 import sys
 import warnings
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -41,6 +58,99 @@ from kinetics_noor import EcoliCarbonKinetics, ALL_PARAMS  # noqa: E402
 # paths
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DATA_DIR = os.path.join(_THIS_DIR, "..", "Data")
+
+
+# ===========================================================================
+# Solver guard
+# ===========================================================================
+def check_solver(name: str = "ipopt") -> bool:
+    """
+    Check that the named solver is available via Pyomo.  Raises RuntimeError
+    with a clear install message if it is not.
+
+    Returns True if the solver is available.
+
+    Install note: conda install -n SaaLab -c conda-forge ipopt
+    """
+    from pyomo.environ import SolverFactory
+    if not SolverFactory(name).available():
+        raise RuntimeError(
+            f"Solver '{name}' is not available in the current environment. "
+            f"Install it with:\n"
+            f"    conda install -n SaaLab -c conda-forge {name}\n"
+            f"or, for IDAES-bundled solvers:\n"
+            f"    idaes get-extensions"
+        )
+    return True
+
+
+# ===========================================================================
+# Prediction dataclass
+# ===========================================================================
+@dataclass
+class Prediction:
+    """
+    Result of GlycolysisParameterEstimator.predict().
+
+    Attributes
+    ----------
+    predicted : pd.DataFrame
+        Model-predicted values (rows=conditions, cols=18 outputs: C_* then v_*).
+        Cells where the corresponding measured value is NaN are also set to NaN
+        so that predicted and real are aligned for plotting and scoring.
+    real : pd.DataFrame
+        Measured values (same shape).  NaN where not measured (or where
+        fit_metabolites=False, which zeros out all C_* columns).
+    rmse : dict
+        Aggregate RMSE metrics over the measured (non-NaN) cells only:
+          'met'       -- sqrt(mean((pred-real)^2)) over metabolite (C_*) cells, in mM.
+                         NaN if no metabolite cells are measured.
+          'flux'      -- sqrt(mean((pred-real)^2)) over flux (v_*) cells, in mmol/gDCW/h.
+                         NaN if no flux cells are measured.
+          'data_norm' -- normalized RMSE: for each output column, divide its residuals
+                         by that column's mean measured value (nanmean of real[col]);
+                         then sqrt(nanmean of all normalized squared residuals) over
+                         ALL measured cells (metabolites + fluxes).  Columns whose mean
+                         measured value is 0 or NaN are skipped.
+          'weighted'  -- measurement-sigma-weighted RMSE: residuals divided by each
+                         output's measurement std (the same sigmas the weighted-SSE
+                         objective uses), then sqrt(nanmean of squared weighted
+                         residuals) over ALL measured cells.  This is dimensionless and
+                         directly interpretable: ~1 means the fit sits at the noise
+                         floor, >>1 means the model misses beyond measurement error.
+    per_output : pd.Series
+        Per-output raw RMSE (one value per measured output, in that output's own
+        units), indexed by output name (C_* then v_*).  Outputs with no measured
+        cell are omitted.  Useful for spotting which single metabolite/flux fits
+        worst and for bar plots.
+    """
+    predicted: pd.DataFrame = field(default_factory=pd.DataFrame)
+    real: pd.DataFrame = field(default_factory=pd.DataFrame)
+    rmse: dict = field(default_factory=dict)
+    per_output: pd.Series = field(default_factory=lambda: pd.Series(dtype=float))
+
+    def summary(self) -> str:
+        """Short human-readable summary of the prediction result."""
+        n_cond = len(self.predicted)
+        n_meas = int(self.real.notna().sum().sum())
+        n_outputs = len(self.predicted.columns)
+        met_rmse = self.rmse.get("met", float("nan"))
+        flux_rmse = self.rmse.get("flux", float("nan"))
+        norm_rmse = self.rmse.get("data_norm", float("nan"))
+        wgt_rmse = self.rmse.get("weighted", float("nan"))
+        lines = [
+            f"Prediction over {n_cond} condition(s), {n_outputs} outputs "
+            f"({n_meas} measured cells):",
+            f"  RMSE met       = {met_rmse:.4g} mM",
+            f"  RMSE flux      = {flux_rmse:.4g} mmol/gDCW/h",
+            f"  RMSE data_norm = {norm_rmse:.4g} (dimensionless, column-mean normalized)",
+            f"  RMSE weighted  = {wgt_rmse:.4g} (sigma units; ~1 = at noise floor)",
+        ]
+        if not self.per_output.empty:
+            worst = self.per_output.sort_values(ascending=False).head(3)
+            worst_str = ", ".join(f"{k}={v:.3g}" for k, v in worst.items())
+            lines.append(f"  worst-fit outputs: {worst_str}")
+        return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -639,6 +749,7 @@ class GlycolysisParameterEstimator:
     # -- estimation -----------------------------------------------------------
     def estimate(self):
         """Weighted least-squares estimation. Returns theta (pd.Series)."""
+        check_solver("ipopt")
         self.obj_value, self.theta = self.pest.theta_est()
         return self.theta
 
@@ -811,6 +922,406 @@ class GlycolysisParameterEstimator:
             rows.append(df.iloc[0][out_names])
         table = pd.DataFrame(rows, index=conditions)[out_names]
         return table.mean(axis=0) if aggregate == "mean" else table
+
+    # -- predict / rmse -------------------------------------------------------
+    def predict(self, theta=None, conditions=None) -> "Prediction":
+        """
+        Predict steady-state outputs (metabolites + fluxes) at given parameters
+        and return a Prediction dataclass with predicted/real DataFrames and RMSE.
+
+        Parameters
+        ----------
+        theta : dict or None
+            Parameters to evaluate at.  Resolved via _full_theta (arg > estimate >
+            literature).  Works without ipopt (CasADi only).
+        conditions : list[str] or None
+            Conditions to predict.  Default: self.conditions.
+
+        Returns
+        -------
+        Prediction
+            .predicted  -- (n_cond x 18) DataFrame; cells masked NaN where real is NaN.
+            .real       -- (n_cond x 18) DataFrame; NaN where not measured.
+            .rmse       -- {'met': float, 'flux': float, 'data_norm': float}.
+                           See Prediction docstring for normalization details.
+
+        Notes
+        -----
+        RMSE normalization for 'data_norm': each output column's residuals are
+        divided by that column's nanmean of the real values, then all normalized
+        squared residuals (metabolites + fluxes) are averaged and sqrt-taken.
+        Columns with zero or NaN mean are skipped.  This makes 'data_norm' a
+        dimensionless aggregate over outputs of very different magnitudes.
+        """
+        conditions = list(conditions) if conditions is not None else list(self.conditions)
+        theta_full = self._full_theta(theta)
+        kin = self._kinetics()
+        out_cols = (list(EcoliCarbonKinetics.balanced_keys)
+                    + list(EcoliCarbonKinetics.flux_keys))
+        met_cols = [c for c in out_cols if c.startswith("C_")]
+        flux_cols = [c for c in out_cols if c.startswith("v_")]
+        pred_df = self._steady_state_outputs(theta_full, conditions, kin, aggregate="none")
+        real_rows = {}
+        for cond in conditions:
+            data = load_condition(cond, self.data_dir)
+            row = {}
+            for col in flux_cols:
+                row[col] = data["v_real"].get(col, float("nan"))
+            for col in met_cols:
+                if self.fit_metabolites:
+                    row[col] = data["x_real"].get(col, float("nan"))
+                else:
+                    row[col] = float("nan")
+            real_rows[cond] = row
+        real_df = pd.DataFrame(real_rows, index=out_cols).T.astype(float)
+        real_df = real_df[out_cols]
+        pred_aligned = pred_df.copy().reindex(columns=out_cols)
+        pred_aligned[real_df.isna()] = float("nan")
+        residual = pred_aligned - real_df
+        def _nanrmse(arr):
+            vals = arr.to_numpy(dtype=float).ravel()
+            finite = vals[~np.isnan(vals)]
+            if len(finite) == 0:
+                return float("nan")
+            return float(np.sqrt(np.mean(finite ** 2)))
+        rmse_met = _nanrmse(residual[met_cols])
+        rmse_flux = _nanrmse(residual[flux_cols])
+        norm_sq_vals = []
+        for col in out_cols:
+            col_real = real_df[col].to_numpy(dtype=float)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                col_mean = float(np.nanmean(col_real))
+            if np.isnan(col_mean) or col_mean == 0.0:
+                continue
+            col_res = residual[col].to_numpy(dtype=float)
+            norm_res = col_res / col_mean
+            finite_norm = norm_res[~np.isnan(norm_res)]
+            norm_sq_vals.extend(finite_norm ** 2)
+        if norm_sq_vals:
+            rmse_norm = float(np.sqrt(np.mean(norm_sq_vals)))
+        else:
+            rmse_norm = float("nan")
+        # weighted (reduced-chi2-like) RMSE: residual / measurement sigma, where the
+        # sigma is the same per-output std the weighted-SSE objective uses.  ~1 means
+        # the fit sits at the measurement noise floor.
+        wgt_sq_vals = []
+        for col in out_cols:
+            col_real = real_df[col].to_numpy(dtype=float)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                col_mean = float(np.nanmean(col_real))
+            kind = "flux" if col.startswith("v_") else "conc"
+            sigma = self._output_sigma(kind, col, col_mean)
+            if not np.isfinite(sigma) or sigma <= 0.0:
+                continue
+            col_res = residual[col].to_numpy(dtype=float)
+            wgt_res = col_res / sigma
+            finite_wgt = wgt_res[~np.isnan(wgt_res)]
+            wgt_sq_vals.extend(finite_wgt ** 2)
+        if wgt_sq_vals:
+            rmse_wgt = float(np.sqrt(np.mean(wgt_sq_vals)))
+        else:
+            rmse_wgt = float("nan")
+        # per-output raw RMSE: one value per measured output column (own units).
+        per_output = {}
+        for col in out_cols:
+            val = _nanrmse(residual[[col]])
+            if not np.isnan(val):
+                per_output[col] = val
+        per_output = pd.Series(per_output, dtype=float)
+        return Prediction(
+            predicted=pred_aligned,
+            real=real_df,
+            rmse={"met": rmse_met, "flux": rmse_flux,
+                  "data_norm": rmse_norm, "weighted": rmse_wgt},
+            per_output=per_output,
+        )
+
+    def rmse(self, theta=None, conditions=None) -> dict:
+        """
+        Thin wrapper around predict() that returns only the rmse dict.
+
+        Returns
+        -------
+        dict with keys 'met', 'flux', 'data_norm'.  See Prediction docstring.
+        """
+        return self.predict(theta=theta, conditions=conditions).rmse
+
+    # -- multistart -----------------------------------------------------------
+    def multistart(self, method: str = "multistart", n_starts: int = 20,
+                   seed=None, engine: str = "sampling", **kwargs) -> dict:
+        """
+        Multi-start or bootstrap estimation to explore the objective landscape.
+
+        Parameters
+        ----------
+        method : 'multistart' or 'bootstrap'
+            'multistart' -- pyomo.contrib.multistart solves parmest's extensive-form
+                (EF) model from multiple random starts (see note below); falls back
+                to a looped theta_est if that solver path raises.
+            'bootstrap'  -- parmest theta_est_bootstrap (scenario resampling).
+        n_starts : int
+            Number of restarts (multistart) or bootstrap samples.
+        seed : int or None
+            Random seed for reproducibility.
+        engine : 'sampling' | 'solver' | 'auto'   (multistart only)
+            'sampling' -- diverse seeded restarts of theta_est() from perturbed
+                          initial points (DEFAULT; robust -- does not depend on the
+                          EF re-solving).  Effectiveness varies with n_starts and
+                          spread; wide starts can fail to converge, so watch
+                          'n_converged' in the result.
+            'solver'   -- pyo.SolverFactory('multistart') on parmest's extensive-form
+                          (EF) model (the Pyomo meta-solver; see note below).
+            'auto'     -- try 'solver', fall back to 'sampling' on error.
+        Both engines are stochastic on this non-convex problem and neither uniformly
+        dominates -- compare 'best_obj' and read the diagnostics ('all_runs',
+        'n_converged', 'frac_within') rather than assuming one is always better.
+        **kwargs : additional keyword arguments
+            For 'multistart': 'strategy' (random sampling strategy for the Pyomo
+                meta-solver, default 'rand'); 'spread' (lognormal width for the
+                sampling engine, default 0.75); 'distribution' ('lognormal' or
+                'loguniform' for the sampling engine); 'factor' (loguniform
+                half-width, default 3.0).
+            For 'bootstrap':  'return_samples' (bool, default False); 'samplesize'
+                (scenarios per bootstrap sample, default = number of conditions).
+
+        Returns
+        -------
+        dict with keys:
+            'best_theta' (pd.Series)  -- best estimated parameters found.
+            'best_obj'   (float)      -- best objective value (NaN for bootstrap).
+            'all_runs'   (pd.DataFrame) -- one row per restart / bootstrap sample,
+                         sorted ascending by 'obj_value' (multistart), with a
+                         'converged' bool column.
+            'method'     (str)        -- 'multistart' or 'bootstrap'.
+            'engine'     (str, multistart only) -- 'solver' or 'sampling' (which ran).
+            'n_converged'(int, multistart only) -- restarts that solved successfully.
+            'obj_median' (float, multistart only) -- median converged objective.
+            'frac_within'(float, multistart only) -- fraction of converged starts
+                         whose objective is within 1% of 'best_obj' (a basin-of-
+                         attraction signal: low -> many basins -> keep adding starts).
+            'stats'      (pd.DataFrame, bootstrap only) -- mean/std/quantiles
+                         of bootstrap theta samples (rows=params, cols=[mean,std,q05,q50,q95]).
+
+        Notes on the Pyomo multistart meta-solver
+        ------------------------------------------
+        pyo.SolverFactory('multistart') is a meta-solver: it re-solves the SAME model
+        from many randomized initial points with an inner local solver (ipopt) and
+        keeps the best feasible objective.  Key options: 'iterations' (number of
+        restarts), 'strategy' ('rand', 'rand_distributed', 'midpoint_guess_and_bound',
+        'rand_guess_and_bound'), and 'solver' (the inner NLP solver).  Here it is
+        applied to parmest's extensive-form model (self.pest.ef_instance, built by one
+        theta_est() call); the fitted theta is then read off the EF first-stage vars.
+        The 'sampling' engine instead restarts the whole theta_est() from perturbed
+        initial parameter values -- more robust when the EF path does not re-solve.
+        """
+        check_solver("ipopt")
+        if method == "bootstrap":
+            return_samples = kwargs.get("return_samples", False)
+            samplesize = kwargs.get("samplesize", None)
+            # parmest builds each bootstrap sample by resampling whole scenarios
+            # (conditions) and rejects samples whose number of DISTINCT scenarios
+            # is <= the number of free parameters.  With samplesize defaulting to
+            # the scenario count, bootstrap is only feasible when there are more
+            # conditions than free parameters; otherwise parmest raises an opaque
+            # "timeout constructing a sample" error.  Guard it with a clear message.
+            eff_samplesize = samplesize if samplesize is not None else len(self.conditions)
+            n_theta = len(self.free_params)
+            if eff_samplesize <= n_theta:
+                raise ValueError(
+                    f"bootstrap needs more distinct scenarios per sample than free "
+                    f"parameters: samplesize={eff_samplesize} but {n_theta} free "
+                    f"parameters.  Use more conditions (currently {len(self.conditions)}) "
+                    f"or fewer free parameters (e.g. fixed_params=REPORT_FIXED_PARAMS), "
+                    f"or pass a larger samplesize."
+                )
+            boot_kwargs = dict(
+                bootstrap_samples=n_starts,
+                seed=seed,
+                return_samples=return_samples,
+            )
+            if samplesize is not None:
+                boot_kwargs["samplesize"] = samplesize
+            bt = self.pest.theta_est_bootstrap(**boot_kwargs)
+            best_theta = bt.drop(columns=["samples"], errors="ignore").mean()
+            stats_cols = bt.drop(columns=["samples"], errors="ignore")
+            stats = pd.DataFrame({
+                "mean":  stats_cols.mean(),
+                "std":   stats_cols.std(),
+                "q05":   stats_cols.quantile(0.05),
+                "q50":   stats_cols.quantile(0.50),
+                "q95":   stats_cols.quantile(0.95),
+            })
+            return {
+                "best_theta": best_theta,
+                "best_obj":   float("nan"),
+                "all_runs":   bt,
+                "method":     "bootstrap",
+                "stats":      stats,
+            }
+        if method != "multistart":
+            raise ValueError(f"method must be 'multistart' or 'bootstrap', got '{method}'.")
+        if engine not in ("auto", "solver", "sampling"):
+            raise ValueError(f"engine must be 'auto', 'solver' or 'sampling', got '{engine}'.")
+        strategy = kwargs.get("strategy", "rand")
+        if engine == "sampling":
+            return self._multistart_looped(n_starts, seed, **kwargs)
+        if engine == "solver":
+            return self._multistart_ef(n_starts, seed, strategy)
+        # engine == "auto": try the Pyomo meta-solver, fall back to sampling.
+        try:
+            return self._multistart_ef(n_starts, seed, strategy)
+        except Exception as exc:  # noqa: BLE001
+            warnings.warn(
+                f"multistart: solver engine (pyo.SolverFactory('multistart')) failed "
+                f"({exc}); falling back to the sampling engine.",
+                stacklevel=2,
+            )
+        return self._multistart_looped(n_starts, seed, **kwargs)
+
+    @staticmethod
+    def _finalize_multistart(best_series, best_obj, all_runs, engine, within=0.01):
+        """
+        Attach global-search diagnostics to a multistart result dict: sort all_runs
+        ascending by objective, flag converged restarts, and report how concentrated
+        the converged objectives are near the best (a basin-of-attraction signal).
+        """
+        objs = np.array([], dtype=float)
+        if "obj_value" in all_runs.columns:
+            all_runs = all_runs.copy()
+            all_runs["converged"] = all_runs["obj_value"].notna()
+            all_runs = all_runs.sort_values("obj_value", na_position="last").reset_index(drop=True)
+            objs = all_runs.loc[all_runs["converged"], "obj_value"].to_numpy(dtype=float)
+        n_conv = int(len(objs))
+        obj_median = float(np.median(objs)) if n_conv else float("nan")
+        if n_conv and np.isfinite(best_obj) and best_obj > 0:
+            frac_within = float(np.mean(objs <= best_obj * (1.0 + within)))
+        elif n_conv:
+            frac_within = float(np.mean(np.isclose(objs, best_obj)))
+        else:
+            frac_within = float("nan")
+        return {
+            "best_theta":  best_series,
+            "best_obj":    best_obj,
+            "all_runs":    all_runs,
+            "method":      "multistart",
+            "engine":      engine,
+            "n_converged": n_conv,
+            "obj_median":  obj_median,
+            "frac_within": frac_within,
+        }
+
+    def _multistart_ef(self, n_starts, seed, strategy):
+        """
+        Solver engine: solve parmest's extensive-form (EF) model with
+        pyo.SolverFactory('multistart') (n_starts random restarts via ipopt), then
+        read the fitted theta off the EF's first-stage variables.
+        """
+        from pyomo.contrib.parmest.parmest import ef_nonants
+        if seed is not None:
+            np.random.seed(seed)
+        free = list(self.free_params)
+
+        def _read_ef_theta(ef):
+            vals = {}
+            for _nd_name, var, sol_val in ef_nonants(ef):
+                var_name = var.name[var.name.find(".") + 1:]
+                vals[var_name] = float(sol_val)
+            return vals
+
+        # One theta_est() builds and stores self.pest.ef_instance and leaves the EF
+        # at the single-start solution.  Capture that theta as the incumbent.
+        base_obj, _ = self.pest.theta_est()
+        ef = self.pest.ef_instance
+        base_theta = _read_ef_theta(ef)
+        # pyomo.contrib.multistart restarts ipopt from random points.  Note: its
+        # num_iter==1 bookkeeping can leave the EF at a WORSE point than the
+        # incumbent, so we compare objectives explicitly and keep the better theta
+        # (never return a best_theta inconsistent with best_obj).
+        ms = pyo.SolverFactory("multistart")
+        ms_opts = dict(iterations=n_starts, strategy=strategy, solver="ipopt")
+        if self.solver_options:
+            ms_opts["solver_args"] = {"options": dict(self.solver_options)}
+        ms.solve(ef, **ms_opts)
+        ms_theta = _read_ef_theta(ef)
+        ms_obj = float(pyo.value(ef.EF_Obj))
+        if ms_obj < float(base_obj):
+            best_obj, best_theta = ms_obj, ms_theta
+        else:
+            best_obj, best_theta = float(base_obj), base_theta
+        best_series = pd.Series(
+            {p: float(best_theta[p]) for p in free}, name="best_theta"
+        )
+        all_runs = pd.DataFrame([
+            {"start": "single", "obj_value": float(base_obj),
+             **{p: float(base_theta[p]) for p in free}},
+            {"start": "multistart", "obj_value": ms_obj,
+             **{p: float(ms_theta[p]) for p in free}},
+        ])
+        return self._finalize_multistart(best_series, best_obj, all_runs, "solver")
+
+    def _multistart_looped(self, n_starts, seed, **kwargs):
+        """
+        Sampling engine: call theta_est() n_starts times from perturbed initial
+        values of the free parameters, keeping the best.  Wide, seeded sampling so
+        the restarts genuinely explore the parameter space toward a global optimum.
+
+        kwargs: 'spread' (lognormal width, default 0.75; alias 'rel_sigma');
+        'distribution' ('lognormal' default, or 'loguniform'); 'factor' (loguniform
+        half-width, default 3.0).
+        """
+        rng = np.random.default_rng(seed)
+        spread = float(kwargs.get("spread", kwargs.get("rel_sigma", 0.75)))
+        distribution = kwargs.get("distribution", "lognormal")
+        factor = float(kwargs.get("factor", 3.0))
+        if distribution not in ("lognormal", "loguniform"):
+            raise ValueError("distribution must be 'lognormal' or 'loguniform'.")
+        nominal = self._full_theta(None)
+        free = list(self.free_params)
+        best_obj = float("inf")
+        best_theta = None
+        run_records = []
+        for i in range(n_starts):
+            perturbed = {}
+            for p in free:
+                base = float(nominal.get(p, LITERATURE_THETA.get(p, 1.0)))
+                lb, ub = THETA_BOUNDS[p]
+                if distribution == "lognormal":
+                    val = base * float(np.exp(rng.normal(0.0, spread)))
+                else:
+                    val = base * float(np.exp(rng.uniform(np.log(1.0 / factor),
+                                                          np.log(factor))))
+                perturbed[p] = float(min(max(val, lb), ub))
+            orig_theta_init = self.theta_init
+            self.theta_init = perturbed
+            self.exp_list = self._build_experiments()
+            self.pest = self._make_estimator()
+            try:
+                obj_i, theta_i = self.pest.theta_est()
+                obj_i = float(obj_i)
+                run_records.append({"start": i, "obj_value": obj_i,
+                                    **{p: float(theta_i[p]) for p in free}})
+                if obj_i < best_obj:
+                    best_obj = obj_i
+                    best_theta = theta_i
+            except Exception as exc:  # noqa: BLE001
+                run_records.append({"start": i, "obj_value": float("nan"),
+                                    **{p: float("nan") for p in free}})
+                warnings.warn(f"multistart restart {i} failed: {exc}", stacklevel=2)
+            finally:
+                self.theta_init = orig_theta_init
+                self.exp_list = self._build_experiments()
+                self.pest = self._make_estimator()
+        all_runs = pd.DataFrame(run_records)
+        if best_theta is not None:
+            best_series = pd.Series(
+                {p: float(best_theta[p]) for p in free}, name="best_theta"
+            )
+        else:
+            best_series = pd.Series({p: float("nan") for p in free}, name="best_theta")
+        best_obj_final = best_obj if best_theta is not None else float("nan")
+        return self._finalize_multistart(best_series, best_obj_final, all_runs, "sampling")
 
     @staticmethod
     def _correlation(x, Y, rank=True):
@@ -1020,21 +1531,21 @@ class GlycolysisParameterEstimator:
         Pipeline step 3 -- profile likelihood / likelihood-ratio confidence region
         via parmest (``objective_at_theta`` + ``likelihood_ratio_test``).
 
-        Reconfigures, estimates θ̂ and the optimal objective, then evaluates the
-        objective over a grid of parameter values and runs the χ² likelihood-ratio
-        test.  By default the grid is a 1-D scan of each free parameter (others held
-        at θ̂); pass a custom ``theta_values`` DataFrame (columns = the free
-        parameters) for a 2-D region or any custom scan.
+        Reconfigures, estimates theta_hat and the optimal objective, then evaluates
+        the objective over a grid of parameter values and runs the chi2 likelihood-
+        ratio test.  By default the grid is a 1-D scan of each free parameter (others
+        held at theta_hat); pass a custom ``theta_values`` DataFrame (columns = the
+        free parameters) for a 2-D region or any custom scan.
 
         Returns
         -------
         dict with keys:
-            'theta'          : θ̂ (pd.Series)
-            'obj_value'      : objective at θ̂
+            'theta'          : theta_hat (pd.Series)
+            'obj_value'      : objective at theta_hat
             'obj_at_theta'   : objective for each grid point (pd.DataFrame)
             'likelihood_ratio': obj_at_theta + a True/False column per alpha
                                 (True = inside the confidence region)
-            'thresholds'     : χ² objective threshold per alpha
+            'thresholds'     : chi2 objective threshold per alpha
 
         >>> res = est.profile_likelihood(free_params=["kcat_f_2"],
         ...                              fixed_values={...}, n_grid=25, alphas=(0.9, 0.95))
