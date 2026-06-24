@@ -1,3 +1,5 @@
+from xml.parsers.expat import model
+
 import numpy as np
 import scipy
 import pandas as pd
@@ -115,8 +117,27 @@ def compute_sensitivity(
     # can make corr[i,j] and corr[j,i] differ enough to break threshold-based masks.
     corr = (corr + corr.T) / 2
 
+    theta = np.array([params_estimate[k] for k in model.params_keys])
+
+    # Confidence intervals: param ± 2σ
+    ci_lower = theta - 2 * stds_safe
+    ci_upper = theta + 2 * stds_safe
+
+    # L95: 4σ / param (relative width of 95% CI)
+    with np.errstate(invalid='ignore', divide='ignore'):
+        L95 = 4 * stds_safe / np.abs(theta)
+
+    # Package as DataFrames
+    identifiability_df = pd.DataFrame({
+    "param":     theta,
+    "sigma":     stds_safe,
+    "ci_lower":  ci_lower,
+    "ci_upper":  ci_upper,
+    "L95":       L95,}, index=model.params_keys)
+
     return G_total, corr, {
         "FIM": FIM, "cov": cov, "stds": stds_safe, "n_par": n_par,
         "G_list": G_list, "measured": measured, "skipped": skipped,
         "unidentifiable": np.where(unidentifiable)[0].tolist(),
-    }
+        "identifiability": identifiability_df,
+        }
