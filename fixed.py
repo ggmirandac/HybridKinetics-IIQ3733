@@ -227,3 +227,161 @@ G_total, corr, diag = compute_sensitivity(
 )
 
 print(diag["identifiability"].to_string())
+
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from matplotlib.patches import Rectangle as MplRect
+import os
+
+os.makedirs('figures', exist_ok=True)
+
+# ── 1. Mean sensitivity heatmap (Cell 7) ─────────────────────────────────
+G_mean = np.mean([np.abs(G) for G in diag['G_list']], axis=0)
+
+meas_bal  = [k for k in diag['measured'] if k.startswith('C_')]
+meas_flux = [k for k in diag['measured'] if k.startswith('v_')]
+n_meas_bal  = len(meas_bal)
+n_meas_flux = len(meas_flux)
+
+top_n   = 15
+top_idx = np.argsort(G_mean.max(axis=0))[::-1][:top_n]
+xlabels = [model.params_keys[i] for i in top_idx]
+
+fig, (ax_c, ax_f) = plt.subplots(2, 1, figsize=(14, 7),
+                                  gridspec_kw={'height_ratios': [n_meas_bal, n_meas_flux],
+                                               'hspace': 0.05})
+im_c = ax_c.imshow(G_mean[:n_meas_bal, :][:, top_idx], aspect='auto', cmap='viridis')
+ax_c.set_xticks([])
+ax_c.set_yticks(range(n_meas_bal))
+ax_c.set_yticklabels(meas_bal, fontsize=8)
+ax_c.set_title("Mean |relative sensitivity| -- top 15 parameters", fontsize=10)
+plt.colorbar(im_c, ax=ax_c, label="|d ln C / d ln θ|")
+
+im_f = ax_f.imshow(G_mean[n_meas_bal:, :][:, top_idx], aspect='auto', cmap='viridis')
+ax_f.set_xticks(range(top_n))
+ax_f.set_xticklabels(xlabels, rotation=55, ha='right', fontsize=8)
+ax_f.set_yticks(range(n_meas_flux))
+ax_f.set_yticklabels(meas_flux, fontsize=8)
+plt.colorbar(im_f, ax=ax_f, label="|d ln v / d ln θ|")
+plt.tight_layout()
+plt.savefig('figures/sensitivity_heatmap.pdf', dpi=300, bbox_inches='tight')
+plt.show()
+
+# ── 2. Correlation matrix — unmasked (Cell 8) ────────────────────────────
+reaction_groups = [
+    ("PTS",  0,  4,  '#d73027'), ("PGI",  5,  7,  '#4575b4'),
+    ("PFK",  8, 12,  '#1a9850'), ("FBA", 13, 16,  '#762a83'),
+    ("TPI", 17, 19,  '#e08214'), ("GAP", 20, 25,  '#8c510a'),
+    ("PGK", 26, 30,  '#de77ae'), ("GPM", 31, 33,  '#80cdc1'),
+    ("ENO", 34, 36,  '#74add1'),
+]
+param_labels = [
+    r"$v^{\max}_{PTS}$", r"$K_{a1}$", r"$K_{a2}$", r"$K_{a3}$", r"$K_{g6p}$",
+    r"$K_{s,g6p}^{2}$", r"$K_{p,f6p}^{2}$", r"$k^{+}_{cat,2}$",
+    r"$K_{s,f6p}^{3}$", r"$K_{s,atp}^{3}$", r"$K_{p,fbp}^{3}$", r"$K_{p,adp}^{3}$", r"$k^{+}_{cat,3}$",
+    r"$K_{s,fbp}^{4}$", r"$K_{p,g3p}^{4}$", r"$K_{p,dhap}^{4}$", r"$k^{+}_{cat,4}$",
+    r"$k^{+}_{cat,5}$", r"$K_{s,dhap}^{5}$", r"$K_{p,g3p}^{5}$",
+    r"$k^{+}_{cat,6}$", r"$K_{s,g3p}^{6}$", r"$K_{s,pi}^{6}$", r"$K_{s,nad}^{6}$", r"$K_{p,pgp}^{6}$", r"$K_{p,nadh}^{6}$",
+    r"$k^{+}_{cat,7}$", r"$K_{s,pgp}^{7}$", r"$K_{s,adp}^{7}$", r"$K_{p,3pg}^{7}$", r"$K_{p,atp}^{7}$",
+    r"$k^{+}_{cat,8}$", r"$K_{s,3pg}^{8}$", r"$K_{p,2pg}^{8}$",
+    r"$k^{+}_{cat,9}$", r"$K_{s,2pg}^{9}$", r"$K_{p,pep}^{9}$",
+]
+
+def make_corr_plot(corr_mat, labels, reaction_groups, thresh, filename):
+    # reorder: kcat first within each reaction group
+    _KCAT0 = {7, 12, 16, 17, 20, 26, 31, 34}
+    _PTS0  = {0, 1, 2, 3, 4}
+    def _t0(i): return 'pts' if i in _PTS0 else ('kcat' if i in _KCAT0 else 'km')
+    _rank = {'kcat': 0, 'km': 1, 'pts': 0}
+    _perm = []
+    for _nm, _is, _ie, _c in reaction_groups:
+        _perm += sorted(range(_is, _ie + 1), key=lambda i: (_rank[_t0(i)], i))
+    
+    labels_p = [labels[i] for i in _perm]
+    corr_p   = corr_mat[np.ix_(_perm, _perm)]
+    KCAT_IDX = {p for p, o in enumerate(_perm) if o in _KCAT0}
+    PTS_IDX  = {p for p, o in enumerate(_perm) if o in _PTS0}
+
+    corr_masked = np.where(np.abs(corr_p) >= thresh, corr_p, np.nan)
+    np.fill_diagonal(corr_masked, np.nan)
+    n = len(labels_p)
+
+    mpl.rcParams.update({'font.family': 'sans-serif', 'font.size': 9,
+                         'axes.linewidth': 0.6, 'mathtext.fontset': 'dejavusans'})
+    cmap = mpl.colormaps['RdBu_r'].copy()
+    cmap.set_bad('#e9e9ec')
+
+    GAP, STRIP, TICK_FS, STRIP_FS = 0.35, 1.4, 11, 9
+    fig, ax = plt.subplots(figsize=(10.5, 10.5), dpi=200)
+    im = ax.imshow(corr_masked, cmap=cmap, vmin=-1, vmax=1,
+                   interpolation='none', aspect='equal')
+    ax.set_xlim(-0.5, n - 0.5 + GAP + STRIP)
+    ax.set_ylim(n - 0.5, -0.5 - GAP - STRIP)
+    ax.set_xticks(range(n)); ax.set_yticks(range(n))
+    ax.set_xticklabels(labels_p, rotation=90, fontsize=TICK_FS, ha='center')
+    ax.set_yticklabels(labels_p, fontsize=TICK_FS)
+
+    TYPE_COLOR = {'kcat': '#117733', 'km': '#332288', 'pts': '#882255'}
+    def _type_color(i):
+        if i in PTS_IDX:  return TYPE_COLOR['pts']
+        if i in KCAT_IDX: return TYPE_COLOR['kcat']
+        return TYPE_COLOR['km']
+    for i, t in enumerate(ax.get_xticklabels()):
+        t.set_color(_type_color(i)); t.set_fontweight('semibold')
+    for i, t in enumerate(ax.get_yticklabels()):
+        t.set_color(_type_color(i)); t.set_fontweight('semibold')
+    ax.tick_params(length=2, width=0.5, pad=2)
+
+    for k in np.arange(-0.5, n, 1):
+        ax.plot([-0.5, n-0.5], [k, k], color='white', lw=0.5, zorder=1)
+        ax.plot([k, k], [-0.5, n-0.5], color='white', lw=0.5, zorder=1)
+
+    for name, i_s, i_e, col in reaction_groups:
+        if i_s != 0:
+            ax.plot([i_s-0.5, i_s-0.5], [-0.5, n-0.5], color='#2b2b2b', lw=1.1, zorder=3)
+            ax.plot([-0.5, n-0.5], [i_s-0.5, i_s-0.5], color='#2b2b2b', lw=1.1, zorder=3)
+        ax.add_patch(MplRect((i_s-0.5, i_s-0.5), i_e-i_s+1, i_e-i_s+1,
+                             fill=False, edgecolor=col, lw=1.6, zorder=5))
+    ax.add_patch(MplRect((-0.5, -0.5), n, n, fill=False, edgecolor='#2b2b2b', lw=1.1, zorder=6))
+
+    top_y, right_x = -0.5 - GAP - STRIP, n - 0.5 + GAP
+    for name, i_s, i_e, col in reaction_groups:
+        w = i_e - i_s + 1
+        ax.add_patch(MplRect((i_s-0.5, top_y), w, STRIP,
+                             facecolor=col, edgecolor='white', lw=1.0, zorder=4))
+        ax.text((i_s+i_e)/2, top_y+STRIP/2, name, ha='center', va='center',
+                fontsize=STRIP_FS, fontweight='bold', color='white', zorder=5)
+        ax.add_patch(MplRect((right_x, i_s-0.5), STRIP, w,
+                             facecolor=col, edgecolor='white', lw=1.0, zorder=4))
+        ax.text(right_x+STRIP/2, (i_s+i_e)/2, name, ha='center', va='center',
+                fontsize=STRIP_FS, fontweight='bold', color='white', rotation=270, zorder=5)
+
+    for s in ('top', 'right', 'bottom', 'left'): ax.spines[s].set_visible(False)
+    cbar = fig.colorbar(im, ax=ax, fraction=0.045, pad=0.03, shrink=0.6)
+    cbar.set_label(r'Correlation  $r_{ij}$', fontsize=11, labelpad=4)
+    cbar.set_ticks([-1, -0.5, 0, 0.5, 1])
+    cbar.ax.tick_params(labelsize=9, length=3, width=0.5)
+    cbar.outline.set_linewidth(0.6)
+    plt.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.show()
+    mpl.rcParams.update(mpl.rcParamsDefault)
+
+# unmasked (all correlations)
+make_corr_plot(corr, param_labels, reaction_groups, thresh=0.0,
+               filename='figures/corr_not_masked.pdf')
+
+# masked (|r| >= 0.9 only)
+make_corr_plot(corr, param_labels, reaction_groups, thresh=0.9,
+               filename='figures/corr_masked.pdf')
+
+# ── 3. Print correlated pairs ─────────────────────────────────────────────
+df_corr = pd.DataFrame(corr, index=model.params_keys, columns=model.params_keys)
+list_corrs = []
+for i in range(len(df_corr)):
+    for j in range(i+1, len(df_corr)):
+        if abs(df_corr.iloc[i, j]) >= 0.9:
+            list_corrs.append((df_corr.index[i], df_corr.columns[j],
+                               round(df_corr.iloc[i, j], 3)))
+df_corrs = pd.DataFrame(list_corrs, columns=['Parameter 1', 'Parameter 2', 'Correlation'])
+print(df_corrs.to_string())
+print(f"\nTotal correlated pairs (|r| >= 0.9): {len(df_corrs)}")
