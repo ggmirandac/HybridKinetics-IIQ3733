@@ -1,5 +1,34 @@
 from sentitivity import compute_sensitivity
 import pandas as pd
+import numpy as np
+import pickle
+from src.kinetics_noor import EcoliCarbonKinetics
+
+with open('Data/k_eq_values.pkl', 'rb') as f:
+    k_eq = pickle.load(f)
+
+balanced_met_df   = pd.read_csv('Data/balanced_metabolites.csv', index_col=0)
+imbalanced_met_df = pd.read_csv('Data/imbalanced_metabolites.csv', index_col=0)
+
+imbalanced_bounds = {}
+total_min = 1e12
+for met in imbalanced_met_df.index:
+    imbalanced_bounds[met] = (imbalanced_met_df.loc[met].min() * 0.8,
+                              imbalanced_met_df.loc[met].max() * 1.2)
+    if imbalanced_bounds[met][0] < total_min:
+        total_min = imbalanced_bounds[met][0]
+imbalanced_bounds["C_pi"] = (total_min, 10.0)
+
+max_max_balanced = balanced_met_df.max().max() * 1.2
+min_min_balanced = 1e-6
+balanced_bounds = {k: (min_min_balanced, max_max_balanced) for k in [
+    "C_g6p","C_f6p","C_fbp","C_dhap","C_g3p","C_pgp","C_3pg","C_2pg","C_pep"
+]}
+
+model = EcoliCarbonKinetics(imbalanced_bounds, balanced_bounds)
+
+input_enzyme     = pd.read_csv('Data/important_proteins.csv', index_col=0)
+input_cell_needs = pd.read_csv('Data/cellular_needs.csv', index_col=0)
 
 # --- measurement errors (from data_analysis.ipynb output) ---
 met_Q  = pd.read_csv('Data/balanced_metabolites_Q.csv', index_col=0)
