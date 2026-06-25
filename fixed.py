@@ -168,16 +168,16 @@ def kcat_convert(kcat_s, enzyme):
 params_from_literature = {
     "v_max_1": 25.739, "Ka1_1": 1.0, "Ka2_1": 0.01, "Ka3_1": 1.0,
     "K_g6p_1": 0.5, "kcat_f_2": None, "Ks_g6p_pgi": 1.018,
-    "Kp_f6p_pgi": np.mean([0.200, 0.078]), "kcat_f_3": None,
-    "Ks_f6p_3": 0.030, "Ks_atp_3": 0.060, "Kp_fbp_3": None,
+    "Kp_f6p_pgi": 0.078, "kcat_f_3": None,
+    "Ks_f6p_3": 0.013, "Ks_atp_3": 0.020, "Kp_fbp_3": 0.14,
     "Kp_adp_3": None, "kcat_f_4": kcat_convert(10.33, 'fba'),
     "Ks_fbp_4": 0.240, "Kp_g3p_4": None, "Kp_dhap_4": None,
-    "kcat_f_5": kcat_convert(np.mean([8700, 9000]), 'tpi'),
+    "kcat_f_5": kcat_convert(9000, 'tpi'),
     "Ks_dhap_5": 1.030, "Kp_g3p_5": None, "kcat_f_6": None,
     "Ks_g3p_6": 0.890, "Ks_pi_6": 0.530, "Ks_nad_6": 0.045,
     "Kp_pgp_6": None, "Kp_nadh_6": None, "kcat_f_7": None,
     "Ks_pgp_7": None, "Ks_adp_7": None, "Ks_3pg_7": None,
-    "Ks_atp_7": None, "kcat_f_8": kcat_convert(220, 'gpm'),
+    "Ks_atp_7": None, "kcat_f_8": kcat_convert(330, 'gpm'),
     "Ks_3pg_8": 0.200, "Ks_2pg_8": 0.190, "kcat_f_9": None,
     "Ks_2pg_9": 0.100, "Ks_pep_9": None,
 }
@@ -185,7 +185,7 @@ params_from_literature = {
 params_to_set     = ['kcat_f_2', 'kcat_f_3', 'kcat_f_6', 'kcat_f_7', 'kcat_f_9']
 params_kcat_fixed = ['kcat_f_4', 'kcat_f_5']
 missing_kms = {
-    'pgi': [], 'pfk': ['Kp_fbp_3', 'Kp_adp_3'],
+    'pgi': [], 'pfk': ['Kp_adp_3'],
     'fba': ['Kp_g3p_4', 'Kp_dhap_4'], 'tpi': ['Kp_g3p_5'],
     'gap': ['Kp_pgp_6', 'Kp_nadh_6'],
     'pgk': ['Ks_pgp_7', 'Ks_adp_7', 'Ks_3pg_7', 'Ks_atp_7'],
