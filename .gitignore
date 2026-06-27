@@ -262,3 +262,7 @@ Model/fetch_brenda.py
 fetch_brenda.py
 *.zip
 ws14_pypesto.ipynb
+param_estimation_demo.ipynb
+
+# Large generated artifacts from estimation pipeline
+results/**/sensitivity.pkl

@@ -691,6 +691,7 @@ class GlycolysisParameterEstimator:
         self.obj_value = None
         self.theta = None        # pd.Series, set by estimate()
         self._cov = None         # pd.DataFrame, set by covariance()
+        self._kin = None         # EcoliCarbonKinetics, built lazily and cached
 
     # -- setup ----------------------------------------------------------------
     def _validate_inputs(self):
@@ -793,12 +794,8 @@ class GlycolysisParameterEstimator:
         names = list(cov.columns)
         sigmas = np.sqrt(np.clip(np.diag(cov.to_numpy()), 0.0, None))
         theta = np.array([self.theta[n] for n in names])
-        dof = max(self.n_data_points - len(names), 1)
-        try:
-            from scipy.stats import t as _t
-            tcrit = float(_t.ppf(1 - alpha / 2, dof))
-        except Exception:  # noqa: BLE001
-            tcrit = 1.96
+
+        tcrit = 1.96
         return pd.DataFrame({
             "theta": theta, "std_err": sigmas,
             "ci_low": theta - tcrit * sigmas, "ci_high": theta + tcrit * sigmas,
@@ -818,10 +815,20 @@ class GlycolysisParameterEstimator:
         return full
 
     def _kinetics(self):
-        """Instantiate EcoliCarbonKinetics (builds its CasADi steady-state solver)."""
-        bounds_imb = {k: self.u_bounds[k] for k in EcoliCarbonKinetics.imbalanced_keys}
-        return EcoliCarbonKinetics(bounds_imbalanced_mets=bounds_imb,
-                                   bounds_balanced_mets=X_BOUNDS)
+        """
+        Return the cached EcoliCarbonKinetics instance, building it on first use.
+
+        Building the instance compiles the CasADi/ipopt steady-state NLP, which is
+        the dominant cost of predict / sensitivity / structural_report.  The solver
+        is parameterized symbolically in theta, enzymes and cell-needs, so a single
+        instance is valid for every theta and condition -- cache it for the
+        estimator's lifetime instead of rebuilding on each call.
+        """
+        if self._kin is None:
+            bounds_imb = {k: self.u_bounds[k] for k in EcoliCarbonKinetics.imbalanced_keys}
+            self._kin = EcoliCarbonKinetics(bounds_imbalanced_mets=bounds_imb,
+                                            bounds_balanced_mets=X_BOUNDS)
+        return self._kin
 
     def sensitivity_matrix(self, theta=None, conditions=None, kind="both"):
         """
@@ -903,6 +910,46 @@ class GlycolysisParameterEstimator:
             Qinv = np.diag(1.0 / np.asarray(sig) ** 2)
             F += Gsub.T @ Qinv @ Gsub
         return pd.DataFrame(F, index=params, columns=params)
+
+    def structural_report(self, theta=None, conditions=None, corr_threshold=0.9):
+        """
+        A-priori structural-analysis report at the given parameters (default: the
+        estimate if available, else literature), built over the FREE parameters.
+        CasADi only -- no estimation required, so this works without ipopt.
+
+        Returns
+        -------
+        dict[str, pd.DataFrame]
+            'per_condition'   -- operating-point conditioning per condition
+                                 (ss_residual, rank_A, cond_A, n_bound_active, rank_G).
+            'identifiability' -- FIM-level summary (n_free, FIM_rank, FIM_cond,
+                                 n_identifiable, n_non_estimable, strong-correlation count).
+            'per_parameter'   -- Cramer-Rao std, CV%, estimability flag, and the
+                                 parameter's max |sensitivity| across outputs/conditions.
+        """
+        from sentitivity import build_structural_report
+        conditions = list(conditions) if conditions is not None else list(self.conditions)
+        theta_full = self._full_theta(theta)
+        free = list(self.free_params)
+        kin = self._kinetics()
+        per_cond = []
+        influence = np.zeros(len(free))
+        for cond in conditions:
+            data = load_condition(cond, self.data_dir)
+            enzymes = {k: float(data["e"][k]) for k in EcoliCarbonKinetics.enzymes_keys}
+            cell_needs = {k: float(data["b"].get(k, 0.0))
+                          for k in EcoliCarbonKinetics.balanced_keys}
+            G_df, diag = kin.gen_sensitivity_matrix(
+                enzymes, theta_full, cell_needs, condition_key=cond,
+                free_params=free, return_diagnostics=True)
+            per_cond.append(diag)
+            influence = np.maximum(influence, np.abs(G_df.to_numpy()).max(axis=0))
+        fim = self.fisher_information_matrix(theta=theta, conditions=conditions,
+                                             free_only=True)
+        theta_free = {p: float(theta_full[p]) for p in free}
+        return build_structural_report(
+            per_cond, fim, theta_free, free,
+            influence=pd.Series(influence, index=free), corr_threshold=corr_threshold)
 
     # -- perturbation (Monte Carlo, one-at-a-time) ---------------------------
     def _steady_state_outputs(self, theta_full, conditions, kin, aggregate="mean"):

@@ -16,12 +16,11 @@ import time
 import numpy as np
 import pandas as pd
 import casadi as ca
-import matplotlib.pyplot as plt
-import scipy
 import pickle
 import os
+
 ALL_PARAMS = [
-    # PTS (empirical formulation — unchanged)
+    # PTS (empirical formulation -- unchanged)
     "v_max_1",
     "Ka1_1",
     "Ka2_1",
@@ -205,9 +204,8 @@ class EcoliCarbonKinetics:
                      "warm_start_mult_bound_push": 1e-6,
                  }, "print_time": 0},
                  ss_tolerance: float = 1e-6,
-                 R_ct: float = 8.314,   # J/(mol·K)
-                 T: float = 310.15,     # K  (37 °C)
-                 k_db: str = os.path.join('Data', 'k_eq_values.pkl')
+                 R_ct: float = 8.314,   # J/(mol K)
+                 T: float = 310.15,     # K  (37 C)
                  ):
         self.stoichiometric_matrix = self._construct_stoichiometric_matrix()
         self.bounds_imbalanced_mets = bounds_imbalanced_mets
@@ -259,11 +257,11 @@ class EcoliCarbonKinetics:
         Reaction : glc + pep -> g6p + pyr
         Enzymes  : PtsI, PtsH  (v_max_1 absorbs enzyme concentration)
 
-        Empirical formulation — no thermodynamic gamma term.
+        Empirical formulation -- no thermodynamic gamma term.
 
         constants keys : v_max_1, Ka1_1, Ka2_1, Ka3_1, K_g6p_1
         C keys         : C_pyr, C_pep, C_glc, C_g6p
-        e keys         : (none — v_max already incorporates enzyme level)
+        e keys         : (none -- v_max already incorporates enzyme level)
         """
         v_max_1  = constants["v_max_1"]
         Ka1_1    = constants["Ka1_1"]
@@ -291,7 +289,7 @@ class EcoliCarbonKinetics:
         Reaction : g6p <=> f6p
         Enzyme   : Pgi
 
-        Noor formulation — thermodynamic driving force via gamma.
+        Noor formulation -- thermodynamic driving force via gamma.
         EcoCyc: https://ecocyc.org/gene?orgid=ECOLI&id=EG10702
         constants keys : Ks_g6p_pgi, Kp_f6p_pgi, kcat_f_2
         C keys         : C_g6p, C_f6p
@@ -318,7 +316,7 @@ class EcoliCarbonKinetics:
         Reaction : f6p + atp <=> fbp + adp
         Enzyme   : PfkB
 
-        Noor formulation — thermodynamic driving force via gamma.
+        Noor formulation -- thermodynamic driving force via gamma.
         Allosteric modifiers (original formulation) removed; directionality
         is now encoded entirely in dGr.
 
@@ -354,7 +352,7 @@ class EcoliCarbonKinetics:
         Reaction : fbp <=> g3p + dhap
         Enzyme   : FbaA
 
-        Noor formulation — thermodynamic driving force via gamma.
+        Noor formulation -- thermodynamic driving force via gamma.
         Allosteric modifiers (original formulation) removed.
 
         constants keys : Ks_fbp_4, Kp_g3p_4, Kp_dhap_4, kcat_f_4
@@ -388,7 +386,7 @@ class EcoliCarbonKinetics:
         Reaction : dhap <=> g3p
         Enzyme   : TpiA
 
-        Noor formulation — thermodynamic driving force via gamma.
+        Noor formulation -- thermodynamic driving force via gamma.
 
         constants keys : kcat_f_5, Ks_dhap_5, Kp_g3p_5
         C keys         : C_dhap, C_g3p
@@ -418,7 +416,7 @@ class EcoliCarbonKinetics:
         Reaction : g3p + pi + nad <=> pgp + nadh
         Enzyme   : GapA
 
-        Noor formulation — thermodynamic driving force via gamma.
+        Noor formulation -- thermodynamic driving force via gamma.
         Allosteric inhibitors (ADP, AMP, ATP) removed from original formulation.
 
         constants keys : kcat_f_6, Ks_g3p_6, Ks_pi_6, Ks_nad_6, Kp_pgp_6, Kp_nadh_6
@@ -455,7 +453,7 @@ class EcoliCarbonKinetics:
         Reaction : pgp + adp <=> 3pg + atp
         Enzyme   : Pgk
 
-        Noor formulation — thermodynamic driving force via gamma.
+        Noor formulation -- thermodynamic driving force via gamma.
         Product-activation terms (original formulation) removed; directionality
         is now encoded entirely in dGr.
 
@@ -491,7 +489,7 @@ class EcoliCarbonKinetics:
         Reaction : 3pg <=> 2pg
         Enzyme   : GpmA
 
-        Noor formulation — thermodynamic driving force via gamma.
+        Noor formulation -- thermodynamic driving force via gamma.
         Phosphate inhibition (original formulation) removed.
 
         constants keys : kcat_f_8, Ks_3pg_8, Ks_2pg_8
@@ -519,10 +517,10 @@ class EcoliCarbonKinetics:
         Enolase (ENO).
         EC: 4.2.1.11
 
-        Reaction : 2pg <=> pep  (+ h2o, excluded — constant activity)
+        Reaction : 2pg <=> pep  (+ h2o, excluded -- constant activity)
         Enzyme   : Eno
 
-        Noor formulation — thermodynamic driving force via gamma.
+        Noor formulation -- thermodynamic driving force via gamma.
 
         constants keys : kcat_f_9, Ks_2pg_9, Ks_pep_9
         C keys         : C_2pg, C_pep
@@ -579,8 +577,6 @@ class EcoliCarbonKinetics:
             self.eno(constants, C, e),
         ]
 
-
-
     def construct_steady_state_problem(self):
         """
         Builds the CasADi NLP:
@@ -608,9 +604,10 @@ class EcoliCarbonKinetics:
         fluxes = self.compute_fluxes({**C_balanced, **C_imbalanced}, enzymes, constants)
         S = ca.DM(self.stoichiometric_matrix.values)
 
+        v_sym = ca.vertcat(*fluxes)
         f = 0
         # steady-state constraints: S @ v = b
-        g = S @ ca.vertcat(*fluxes) - b_sym
+        g = S @ v_sym - b_sym
         nlp = {
             "x": C_sym,
             "f": f,
@@ -618,6 +615,17 @@ class EcoliCarbonKinetics:
             "p": ca.vertcat(k_sym, e_sym, b_sym),
         }
         self.solver = ca.nlpsol("solver", "ipopt", nlp, self.opts)
+
+        # Pre-build the Jacobian Functions used by gen_sensitivity_matrix ONCE, reusing
+        # the same symbols.  Rebuilding them via ca.jacobian on every sensitivity call
+        # is the dominant cost of a multi-condition / multi-theta structural sweep.
+        n_bal = len(self.balanced_keys)
+        p_sym = ca.vertcat(k_sym, e_sym, b_sym)
+        C_bal_sym = C_sym[:n_bal]
+        self._dg_dCbal_fn = ca.Function("dg_dCbal", [C_sym, p_sym], [ca.jacobian(g, C_bal_sym)])
+        self._dg_dk_fn    = ca.Function("dg_dk",    [C_sym, p_sym], [ca.jacobian(g, k_sym)])
+        self._dv_dCbal_fn = ca.Function("dv_dCbal", [C_sym, p_sym], [ca.jacobian(v_sym, C_bal_sym)])
+        self._dv_dk_fn    = ca.Function("dv_dk",    [C_sym, p_sym], [ca.jacobian(v_sym, k_sym)])
 
     def solve_steady_state(self,
                            enzymes:        dict,
@@ -680,72 +688,66 @@ class EcoliCarbonKinetics:
                             enzymes:        dict,
                             kinetic_params: dict,
                             cell_needs:     dict,
-                            condition_key:  str  | None = None):
+                            condition_key:  str  | None = None,
+                            free_params:    list | None = None,
+                            return_diagnostics: bool = False):
         '''
-        Constructs the sensitivity matrix of fluxes and metabolite concentrations
-        to kinetic parameters at the optimal steady state.
-        considering that we want to compute the sensitivity of both concentrations and fluxes to kinetic parameters, 
-        we can derive the following expressions:
-        Let g(C, p) = S @ v(C, e, p) - b be the steady-state constraint function.
-        Then:
-        dc/dp = - (dg/dC)^(-1) @ (dg/dp)
-        dv/dp = dv/dC @ dc/dp + dv/dp 
+        Local sensitivity matrix of fluxes and balanced-metabolite concentrations to
+        the kinetic parameters at the steady-state operating point.
 
-        where c_i are the balanced metabolite concentrations and theta_j are the kinetic parameters.
-        the output is then [J; H] where J is the sensitivity of concentrations and H is the sensitivity of fluxes.
+        Let g(C, p) = S @ v(C, e, p) - b be the steady-state constraint.  Holding the
+        bounded cofactors (imbalanced metabolites) at the operating point, the implicit
+        function theorem on the 9 balanced metabolites gives:
+            dC_bal/dtheta = - (dg/dC_bal)^(-1) @ (dg/dtheta)
+            dv/dtheta     = (dv/dC_bal) @ dC_bal/dtheta + dv/dtheta|_direct
+        The output stacks J (concentration sensitivities, 9 rows) over H (flux
+        sensitivities, 9 rows).
+
+        Parameters
+        ----------
+        free_params : list[str] or None
+            If given, only these parameter columns are returned (the a-priori
+            sensitivity of the FREE parameters); default = all params_keys.
+        return_diagnostics : bool
+            If True, return (G_df, diag) where diag carries the operating-point
+            conditioning: rank_A, cond_A, bound_active, ss_residual, rank_G.
+
+        Returns
+        -------
+        pd.DataFrame
+            Rows = balanced_keys (9) + flux_keys (9); columns = the selected params.
+            np.asarray(...) yields the (18, n) array in that fixed row/col order.
         '''
+        params = list(self.params_keys if free_params is None else free_params)
+        col_idx = [self.params_keys.index(pk) for pk in params]
         p = np.array(
             [kinetic_params[key] for key in self.params_keys] +
             [enzymes[key]        for key in self.enzymes_keys] +
             [cell_needs[key]     for key in self.balanced_keys]
         )
-        # --- Step 1: solve the steady state at this condition to get the operating point C* ---
-        x0  = self._warm_start_cache.get(condition_key, self._x0_default)
-        sol = self.solver(x0=x0, lbx=self._lbx, ubx=self._ubx, lbg=-self.ss_tolerance, ubg=self.ss_tolerance, p=p)
-        C_opt = sol["x"].full().flatten()   # numeric operating point (19,)
-
         n_bal = len(self.balanced_keys)
-        n_var = n_bal + len(self.imbalanced_keys)
-        n_par = len(self.params_keys)
-        n_enz = len(self.enzymes_keys)
 
-        # --- Step 2: build fresh CasADi SX symbols for all variables ---
-        # We cannot reuse self.solver.x / self.solver.g because nlpsol does not expose
-        # the original SX graph after compilation; rebuilding is the only safe approach.
-        C_s = ca.SX.sym("C", n_var)   # all 19 concentrations (balanced + imbalanced)
-        k_s = ca.SX.sym("k", n_par)   # kinetic parameters theta (37,)
-        e_s = ca.SX.sym("e", n_enz)   # enzyme concentrations (8,)
-        b_s = ca.SX.sym("b", n_bal)   # cell-needs vector b (9,)
-        p_s = ca.vertcat(k_s, e_s, b_s)   # combined parameter vector, same layout as p
+        # --- Step 1: solve for the operating point C* ----------------------------
+        # For reproducibility (P2): a None condition_key uses the default x0 and does
+        # NOT touch the shared warm-start slot, so G never depends on call order.
+        if condition_key is None:
+            x0 = self._x0_default
+        else:
+            x0 = self._warm_start_cache.get(condition_key, self._x0_default)
+        sol = self.solver(x0=x0, lbx=self._lbx, ubx=self._ubx,
+                          lbg=-self.ss_tolerance, ubg=self.ss_tolerance, p=p)
+        C_opt = sol["x"].full().flatten()
+        if condition_key is not None:
+            self._warm_start_cache[condition_key] = C_opt
+        ss_residual = float(np.linalg.norm(np.asarray(sol["g"]).flatten(), ord=2))
 
-        # --- Step 3: rebuild the flux and constraint expressions symbolically ---
-        C_dict = {**{key: C_s[i]         for i, key in enumerate(self.balanced_keys)},
-                  **{key: C_s[i + n_bal] for i, key in enumerate(self.imbalanced_keys)}}
-        k_dict = {key: k_s[i] for i, key in enumerate(self.params_keys)}
-        e_dict = {key: e_s[i] for i, key in enumerate(self.enzymes_keys)}
-
-        v_s = ca.vertcat(*self.compute_fluxes(C_dict, e_dict, k_dict))   # (9,) flux vector
-        g_s = ca.DM(self.stoichiometric_matrix.values) @ v_s - b_s       # (9,) steady-state residual S*v - b
-
-        # --- Step 4: build CasADi Functions for each Jacobian block separately ---
-        # We evaluate each block numerically at C* rather than encoding the full IFT
-        # solve symbolically. Symbolic ca.solve can return NaN when dg/dC_bal is
-        # nearly singular; numpy.linalg.solve gives a clearer error and is easier to debug.
-        C_bal_s = C_s[:n_bal]
-        dg_dCbal_fn  = ca.Function("dg_dCbal",  [C_s, p_s], [ca.jacobian(g_s, C_bal_s)])  # (9, 9)
-        dg_dk_fn     = ca.Function("dg_dk",     [C_s, p_s], [ca.jacobian(g_s, k_s)])      # (9, n_par)
-        dv_dCbal_fn  = ca.Function("dv_dCbal",  [C_s, p_s], [ca.jacobian(v_s, C_bal_s)])  # (9, 9)
-        dv_dk_dir_fn = ca.Function("dv_dk_dir", [C_s, p_s], [ca.jacobian(v_s, k_s)])      # (9, n_par)
-
-        # --- Step 5: evaluate Jacobians numerically at the steady-state operating point ---
-        A = dg_dCbal_fn(C_opt, p).full()    # dg/dC_bal at C*  (9, 9)
-        B = dg_dk_fn(C_opt, p).full()       # dg/dk     at C*  (9, n_par)
-        D = dv_dCbal_fn(C_opt, p).full()    # dv/dC_bal at C*  (9, 9)
-        E = dv_dk_dir_fn(C_opt, p).full()   # dv/dk_dir at C*  (9, n_par)
-
-        # Guard: any NaN/inf in the Jacobians means the operating point is degenerate
+        # --- Step 2: evaluate the cached Jacobian blocks at C* -------------------
+        A = self._dg_dCbal_fn(C_opt, p).full()    # dg/dC_bal  (9, 9)
+        B = self._dg_dk_fn(C_opt, p).full()       # dg/dk      (9, n_par)
+        D = self._dv_dCbal_fn(C_opt, p).full()    # dv/dC_bal  (9, 9)
+        E = self._dv_dk_fn(C_opt, p).full()       # dv/dk      (9, n_par)
         for name, mat in [("A (dg/dC_bal)", A), ("B (dg/dk)", B),
-                          ("D (dv/dC_bal)", D), ("E (dv/dk_dir)", E)]:
+                          ("D (dv/dC_bal)", D), ("E (dv/dk)", E)]:
             if not np.isfinite(mat).all():
                 raise ValueError(
                     f"[gen_sensitivity_matrix] Non-finite entries in {name} "
@@ -753,31 +755,48 @@ class EcoliCarbonKinetics:
                     f"C_opt min={C_opt.min():.3e}, max={C_opt.max():.3e}."
                 )
 
-        # --- Step 6: apply the implicit function theorem (IFT) numerically ---
-        # The steady-state constraint g(C_bal, theta) = 0 pins the 9 balanced metabolites.
-        # Differentiating: A * dC_bal/dtheta + B = 0  =>  A * dC_bal/dtheta = -B
-        # lstsq handles rank-deficient cases gracefully (e.g. TPI near-equilibrium
-        # couples C_dhap and C_g3p, reducing the effective rank from 9 to 8).
-        dCbal_dk, _, rank_A, _ = np.linalg.lstsq(A, -B, rcond=None)   # (9, n_par)
-        if rank_A < A.shape[0]:
-            print(f"  [gen_sensitivity_matrix] Warning: dg/dC_bal is rank {rank_A}/9 "
-                  f"for condition {condition_key!r} -- using least-squares solution.")
+        # --- Step 3: report conditioning instead of masking it (P3) --------------
+        # rank/cond of A diagnose how well the balanced operating point is determined;
+        # balanced metabolites sitting on a bound cannot move, so their sensitivity is 0
+        # and the IFT row for them is not valid -- zero it out explicitly.
+        rank_A = int(np.linalg.matrix_rank(A, tol=1e-8))
+        cond_A = float(np.linalg.cond(A)) if rank_A == n_bal else float("inf")
+        lbx_bal, ubx_bal = self._lbx[:n_bal], self._ubx[:n_bal]
+        C_bal_opt = C_opt[:n_bal]
+        bound_tol = 1e-7
+        bound_active_mask = (C_bal_opt - lbx_bal < bound_tol) | (ubx_bal - C_bal_opt < bound_tol)
+        bound_active = [self.balanced_keys[i] for i in np.where(bound_active_mask)[0]]
 
-        # --- Step 7: propagate to flux sensitivities via the chain rule ---
-        # dv/dtheta = (dv/dC_bal) * (dC_bal/dtheta) + dv/dtheta|_direct
-        # First term: indirect effect through concentration changes
-        # Second term: direct effect of theta on the kinetic rate expressions
+        # --- Step 4: IFT for the balanced metabolites ----------------------------
+        # A @ dC_bal/dtheta = -B; lstsq handles rank-deficient A (min-norm solution).
+        dCbal_dk, _, _, _ = np.linalg.lstsq(A, -B, rcond=None)   # (9, n_par)
+        dCbal_dk[bound_active_mask, :] = 0.0                      # pinned mets cannot move
+
+        # --- Step 5: chain rule to flux sensitivities ----------------------------
         dv_dk = D @ dCbal_dk + E             # (9, n_par)
 
-        # --- Step 8: stack and validate ---
-        # Rows 0..8  -> balanced metabolite sensitivities (balanced_keys order)
-        # Rows 9..17 -> flux sensitivities (flux_keys order)
-        G = np.vstack([dCbal_dk, dv_dk])     # (18, n_par)
-        if not np.isfinite(G).all():
+        # --- Step 6: stack, slice to the requested params, label -----------------
+        G_full = np.vstack([dCbal_dk, dv_dk])   # (18, n_par)
+        if not np.isfinite(G_full).all():
             raise FloatingPointError(
                 f"Non-finite sensitivity entries for condition {condition_key!r}"
             )
-        return G
+        G = G_full[:, col_idx]                   # (18, n_selected)
+        rows = list(self.balanced_keys) + list(self.flux_keys)
+        G_df = pd.DataFrame(G, index=rows, columns=params)
+        if not return_diagnostics:
+            return G_df
+        diagnostics = {
+            "condition":      condition_key,
+            "ss_residual":    ss_residual,
+            "rank_A":         rank_A,
+            "cond_A":         cond_A,
+            "n_bound_active": len(bound_active),
+            "bound_active":   bound_active,
+            "rank_G":         int(np.linalg.matrix_rank(G, tol=1e-8)),
+        }
+        return G_df, diagnostics
+
     def _construct_stoichiometric_matrix(self) -> pd.DataFrame:
         """
         Build the 9x9 stoichiometric matrix N (metabolites x reactions).
@@ -815,7 +834,7 @@ def load_params(csv_path: str) -> dict:
     param_df   = pd.read_csv(csv_path)
     param_dict = dict.fromkeys(ALL_PARAMS, None)
 
-    # PTS — hardcoded from literature (Kadir et al., 2010)
+    # PTS -- hardcoded from literature (Kadir et al., 2010)
     param_dict["v_max_1"] = 25.739  # mmol/gDW/h
     param_dict["Ka1_1"]   = 1.0     # mM
     param_dict["Ka2_1"]   = 0.01    # mM
@@ -850,7 +869,7 @@ def load_params(csv_path: str) -> dict:
 if __name__ == "__main__":
     # Example usage with placeholder parameter values.
     constants = {
-        # v1: PTS — Kadir formulation
+        # v1: PTS -- Kadir formulation
         "v_max_1": 25.739,  # mmol/gDW/h
         "Ka1_1":   1.0,
         "Ka2_1":   0.01,
@@ -858,30 +877,30 @@ if __name__ == "__main__":
         "K_g6p_1": 0.5,     
         # K_g6p^4 (Hill inhibition, n=4 hard-coded)
 
-        # v2: PGI — Noor formulation
+        # v2: PGI -- Noor formulation
         "Ks_g6p_pgi": 0.48,   # mM
         "Kp_f6p_pgi": 0.19,   # mM
         "kcat_f_2":   1475.0, # 1/h
 
-        # v3: PFK — Noor formulation
+        # v3: PFK -- Noor formulation
         "Ks_f6p_3": 0.16,   # mM
         "Ks_atp_3": 0.12,   # mM
         "Kp_fbp_3": 0.50,   # mM
         "Kp_adp_3": 0.20,   # mM
         "kcat_f_3": 580.0,  # 1/h
 
-        # v4: FBA — Noor formulation
+        # v4: FBA -- Noor formulation
         "Ks_fbp_4":  0.30,  # mM
         "Kp_g3p_4":  0.40,  # mM
         "Kp_dhap_4": 2.00,  # mM
         "kcat_f_4":  95.0,  # 1/h
 
-        # v5: TPI — Noor formulation
+        # v5: TPI -- Noor formulation
         "kcat_f_5":  4300.0, # 1/h
         "Ks_dhap_5": 0.61,   # mM
         "Kp_g3p_5":  1.20,   # mM
 
-        # v6: GAPDH — Noor formulation
+        # v6: GAPDH -- Noor formulation
         "kcat_f_6":  118.0, # 1/h
         "Ks_g3p_6":  0.21,  # mM
         "Ks_pi_6":   0.29,  # mM
@@ -889,19 +908,19 @@ if __name__ == "__main__":
         "Kp_pgp_6":  0.01,  # mM
         "Kp_nadh_6": 0.06,  # mM
 
-        # v7: PGK — Noor formulation
+        # v7: PGK -- Noor formulation
         "kcat_f_7": 1150.0, # 1/h
         "Ks_pgp_7": 0.05,   # mM
         "Ks_adp_7": 0.10,   # mM
         "Ks_3pg_7": 0.53,   # mM
         "Ks_atp_7": 0.30,   # mM
 
-        # v8: GPM — Noor formulation
+        # v8: GPM -- Noor formulation
         "kcat_f_8": 540.0,  # 1/h
         "Ks_3pg_8": 0.20,   # mM
         "Ks_2pg_8": 1.40,   # mM
 
-        # v9: ENO — Noor formulation
+        # v9: ENO -- Noor formulation
         "kcat_f_9": 550.0,  # 1/h
         "Ks_2pg_9": 0.10,   # mM
         "Ks_pep_9": 0.50,   # mM
@@ -918,7 +937,7 @@ if __name__ == "__main__":
         "Eno":  0.10,
     }
 
-    # b = 0  →  pure steady state (no external metabolite drain)
+    # b = 0  ->  pure steady state (no external metabolite drain)
     cell_needs = {
         "C_g6p": 0.0, "C_f6p": 0.0, "C_fbp": 0.0,
         "C_dhap": 0.0, "C_g3p": 0.0, "C_pgp": 0.0,

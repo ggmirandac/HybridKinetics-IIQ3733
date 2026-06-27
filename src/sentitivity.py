@@ -45,6 +45,7 @@ def compute_sensitivity(
     G_list   = []
     FIM      = np.zeros((n_par, n_par))
     skipped  = []
+    per_condition_diag = []
 
     for cond in conditions:
         cond_key = cond['condition']
@@ -57,8 +58,11 @@ def compute_sensitivity(
             y      = df_opt.iloc[0][out_keys].values.astype(float)
             y_safe = np.where(np.abs(y) < 1e-12, 1e-12, y)
 
-            G_abs  = np.asarray(model.gen_sensitivity_matrix(enzymes, params_estimate,
-                                                             cell_needs, cond_key))
+            G_df, diag = model.gen_sensitivity_matrix(enzymes, params_estimate,
+                                                      cell_needs, cond_key,
+                                                      return_diagnostics=True)
+            per_condition_diag.append(diag)
+            G_abs  = np.asarray(G_df)
             # relative (log) sensitivity: d ln y / d ln theta
             G_rel  = G_abs * (theta[np.newaxis, :] / y_safe[:, np.newaxis])
 
@@ -115,8 +119,126 @@ def compute_sensitivity(
     # can make corr[i,j] and corr[j,i] differ enough to break threshold-based masks.
     corr = (corr + corr.T) / 2
 
+    report = build_structural_report(
+        per_condition_diag,
+        pd.DataFrame(FIM, index=model.params_keys, columns=model.params_keys),
+        {k: float(theta[i]) for i, k in enumerate(model.params_keys)},
+        list(model.params_keys),
+        influence=pd.Series(np.abs(G_total).max(axis=0), index=model.params_keys),
+        fim_is_relative=True,
+    )
+
     return G_total, corr, {
         "FIM": FIM, "cov": cov, "stds": stds_safe, "n_par": n_par,
         "G_list": G_list, "measured": measured, "skipped": skipped,
         "unidentifiable": np.where(unidentifiable)[0].tolist(),
+        "report": report,
+        "per_condition_diag": per_condition_diag,
+    }
+
+
+def build_structural_report(per_condition_diag, fim_df, theta, params,
+                            influence=None, corr_threshold=0.9, ident_tol=1e-8,
+                            fim_is_relative=False):
+    """
+    Assemble the a-priori structural-analysis report as three tidy DataFrames.
+
+    Identifiability is judged in the scale-free (relative / log) metric: the FIM is
+    scaled by the parameter magnitudes, F_rel = diag(theta) F diag(theta) (skipped if
+    the FIM is already relative).  Estimability is then decided by SUBSPACE PROJECTION
+    onto the identifiable eigen-directions (eigenvalue > tol * max), so the
+    per-parameter count is consistent with the FIM rank -- unlike a raw pinv-variance
+    threshold, which can label rank-deficient directions as "precise".
+
+    Parameters
+    ----------
+    per_condition_diag : list[dict]
+        Per-condition operating-point diagnostics from
+        EcoliCarbonKinetics.gen_sensitivity_matrix(..., return_diagnostics=True).
+    fim_df : pd.DataFrame   Fisher Information Matrix (params x params), labeled.
+    theta : dict or array   Parameter values (scale), aligned with ``params``.
+    params : list[str]      Parameter names (FIM row/col order).
+    influence : pd.Series or None   optional per-parameter influence (max |sensitivity|).
+    corr_threshold : float  threshold for counting strongly correlated parameter pairs.
+    ident_tol : float       relative eigenvalue tolerance for FIM rank / estimability.
+    fim_is_relative : bool  True if ``fim_df`` is already in the relative metric.
+
+    Returns
+    -------
+    dict[str, pd.DataFrame]
+        'per_condition', 'identifiability', 'per_parameter'.
+    """
+    cols = ["ss_residual", "rank_A", "cond_A", "n_bound_active", "rank_G"]
+    if per_condition_diag:
+        pc = pd.DataFrame(per_condition_diag)
+        if "condition" in pc.columns:
+            pc = pc.set_index("condition")
+        per_condition = pc[[c for c in cols if c in pc.columns]]
+    else:
+        per_condition = pd.DataFrame(columns=cols)
+
+    if isinstance(theta, dict):
+        theta_vals = np.array([float(theta[p]) for p in params])
+    else:
+        theta_vals = np.asarray(theta, dtype=float)
+    scale = np.abs(theta_vals)
+
+    F = np.asarray(fim_df, dtype=float)
+    n = F.shape[0]
+    F_rel = F if fim_is_relative else F * np.outer(scale, scale)
+    F_rel = 0.5 * (F_rel + F_rel.T)
+
+    if n:
+        eigvals, eigvecs = np.linalg.eigh(F_rel)
+        max_eig = float(eigvals.max())
+        keep = eigvals > max_eig * ident_tol if max_eig > 0 else np.zeros(n, dtype=bool)
+        fim_rank = int(keep.sum())
+        pos = eigvals[keep]
+        fim_cond = float(max_eig / pos.min()) if fim_rank else float("inf")
+        # fraction of each parameter axis captured by the identifiable eigen-subspace
+        subspace_proj = (eigvecs[:, keep] ** 2).sum(axis=1) if fim_rank else np.zeros(n)
+        cov_rel = np.linalg.pinv(F_rel)
+        rel_std = np.sqrt(np.clip(np.diag(cov_rel), 0.0, None))   # relative std = CV fraction
+    else:
+        fim_rank, fim_cond = 0, float("inf")
+        subspace_proj = np.zeros(0)
+        cov_rel = np.zeros((0, 0))
+        rel_std = np.zeros(0)
+
+    identifiable = subspace_proj > 0.5
+
+    rel_std_safe = rel_std.copy()
+    rel_std_safe[~identifiable] = np.nan
+    with np.errstate(invalid="ignore", divide="ignore"):
+        corr = cov_rel / np.outer(rel_std_safe, rel_std_safe) if n else np.zeros((0, 0))
+    n_pairs = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            if (identifiable[i] and identifiable[j]
+                    and np.isfinite(corr[i, j]) and abs(corr[i, j]) >= corr_threshold):
+                n_pairs += 1
+
+    identifiability = pd.DataFrame([{
+        "n_free":          n,
+        "FIM_rank":        fim_rank,
+        "FIM_cond":        fim_cond,
+        "n_identifiable":  int(identifiable.sum()),
+        "n_non_estimable": int((~identifiable).sum()),
+        f"n_corr_pairs_ge_{corr_threshold}": n_pairs,
+    }])
+
+    cv_percent = np.where(identifiable, 100.0 * rel_std, np.nan)
+    abs_std = np.where(identifiable, rel_std * scale, np.nan)
+    per_parameter = pd.DataFrame({
+        "std":           abs_std,
+        "cv_percent":    cv_percent,
+        "identifiable":  identifiable,
+        "subspace_proj": subspace_proj,
+    }, index=params)
+    if influence is not None:
+        per_parameter["max_abs_sens"] = pd.Series(influence).reindex(params).to_numpy()
+    return {
+        "per_condition":   per_condition,
+        "identifiability": identifiability,
+        "per_parameter":   per_parameter,
     }
