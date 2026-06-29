@@ -34,39 +34,39 @@ def compute_sensitivity(
     corr : ndarray (n_par, n_par)  parameter correlation matrix (Cramer-Rao bound)
     diag : dict  FIM, rank, n_par, G_list, measured
     """
-    theta   = np.array([params_estimate[k] for k in model.params_keys])
-    n_par   = len(theta)
+    theta = np.array([params_estimate[k] for k in model.params_keys])
+    n_par = len(theta)
     out_keys = model.balanced_keys + model.flux_keys          # 18 outputs (rows of G)
     measured = [k for k in out_keys if np.isfinite(measurement_error.get(k, np.nan))]
     meas_idx = [out_keys.index(k) for k in measured]
 
     # Q is unique across conditions: build Q_inv once from absolute SDs
     q_diag = np.array([measurement_error[k] ** 2 for k in measured])
-    Q_inv  = np.diag(1.0 / q_diag)
+    Q_inv = np.diag(1.0 / q_diag)
 
-    G_list   = []
-    FIM      = np.zeros((n_par, n_par))
-    skipped  = []
+    G_list = []
+    FIM = np.zeros((n_par, n_par))
+    skipped = []
     per_condition_diag = []
 
     for cond in conditions:
         cond_key = cond['condition']
         try:
-            enzymes    = input_enzyme.loc[cond_key, :].to_dict()
+            enzymes = input_enzyme.loc[cond_key, :].to_dict()
             cell_needs = input_cell_needs.loc[cond_key, :].to_dict()
-            df_opt, _  = model.solve_steady_state(enzymes, params_estimate, cell_needs,
+            df_opt, _ = model.solve_steady_state(enzymes, params_estimate, cell_needs,
                                                   condition_key=cond_key)
 
-            y      = df_opt.iloc[0][out_keys].values.astype(float)
+            y = df_opt.iloc[0][out_keys].values.astype(float)
             y_safe = np.where(np.abs(y) < 1e-12, 1e-12, y)
 
             G_df, diag = model.gen_sensitivity_matrix(enzymes, params_estimate,
                                                       cell_needs, cond_key,
                                                       return_diagnostics=True)
             per_condition_diag.append(diag)
-            G_abs  = np.asarray(G_df)
+            G_abs = np.asarray(G_df)
             # relative (log) sensitivity: d ln y / d ln theta
-            G_rel  = G_abs * (theta[np.newaxis, :] / y_safe[:, np.newaxis])
+            G_rel = G_abs * (theta[np.newaxis, :] / y_safe[:, np.newaxis])
 
             G_cond = G_rel[meas_idx, :]
             G_list.append(G_cond)
@@ -94,8 +94,8 @@ def compute_sensitivity(
     # Use pseudoinverse: handles near-singular FIM via SVD truncation of small eigenvalues.
     # For well-determined parameters pinv == inv; for near-zero eigenvalue directions
     # it returns zero variance instead of the numerical garbage that inv would produce.
-    cov  = np.linalg.pinv(FIM)
-    var  = np.diag(cov).clip(0)    # clip tiny negatives from floating-point noise
+    cov = np.linalg.pinv(FIM)
+    var = np.diag(cov).clip(0)    # clip tiny negatives from floating-point noise
     stds = np.sqrt(var)
 
     # Mark parameters whose variance is negligible: they are not estimable from this data

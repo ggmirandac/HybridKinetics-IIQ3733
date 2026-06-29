@@ -1,0 +1,31 @@
+{
+  "seed": 0,
+  "mode": "literature; correlation analysis (compute_sensitivity, CasADi analytic)",
+  "source": "Data/theta_init_sampled.csv",
+  "n_conditions": 22,
+  "conditions": [
+    "KO02",
+    "KO03",
+    "KO04",
+    "KO05",
+    "KO07",
+    "KO08",
+    "KO10",
+    "KO11",
+    "KO12",
+    "KO13",
+    "KO14",
+    "KO15",
+    "KO16",
+    "KO17",
+    "KO18",
+    "KO19",
+    "KO20",
+    "KO21",
+    "KO22",
+    "KO23",
+    "KO24",
+    "RF03"
+  ],
+  "n_measured": 14
+}

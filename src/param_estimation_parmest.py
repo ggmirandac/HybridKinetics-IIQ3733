@@ -51,6 +51,24 @@ import pyomo.environ as pyo
 from pyomo.contrib.parmest.experiment import Experiment
 import pyomo.contrib.parmest.parmest as parmest
 
+# `idaes get-extensions` drops k_aug and dot_sens into ~/.idaes/bin, which
+# covariance(method="automatic_differentiation_kaug") needs. We APPEND that dir
+# to PATH (not prepend, and NOT `import idaes`, which prepends) so the SaaLab
+# conda ipopt 3.14.19 still wins over the older idaes-bundled ipopt 3.13.2 --
+# the 3.13.2 build rejects options like acceptable_iter and breaks the fit.
+# We also add ~/.idaes/bin to DYLD_FALLBACK_LIBRARY_PATH: the k_aug binary is
+# linked against libgfortran.5.dylib (bundled next to it) but its rpath does not
+# search its own directory, so without this it fails with "Library not loaded".
+_IDAES_BIN = os.path.join(os.path.expanduser("~"), ".idaes", "bin")
+if os.path.isdir(_IDAES_BIN):
+    if _IDAES_BIN not in os.environ.get("PATH", "").split(os.pathsep):
+        os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + _IDAES_BIN
+    _dyld = os.environ.get("DYLD_FALLBACK_LIBRARY_PATH", "")
+    if _IDAES_BIN not in _dyld.split(os.pathsep):
+        os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = (
+            _IDAES_BIN + os.pathsep + _dyld if _dyld else _IDAES_BIN
+        )
+
 # Import the authoritative kinetics from the same directory.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from kinetics_noor import EcoliCarbonKinetics, ALL_PARAMS  # noqa: E402
@@ -95,9 +113,9 @@ class Prediction:
     Attributes
     ----------
     predicted : pd.DataFrame
-        Model-predicted values (rows=conditions, cols=18 outputs: C_* then v_*).
-        Cells where the corresponding measured value is NaN are also set to NaN
-        so that predicted and real are aligned for plotting and scoring.
+        Full model-predicted values (rows=conditions, cols=18 outputs: C_* then v_*).
+        All 18 outputs are populated regardless of whether a measurement exists,
+        so unmeasured metabolites (e.g. C_g3p, C_pgp, C_2bg) are finite here.
     real : pd.DataFrame
         Measured values (same shape).  NaN where not measured (or where
         fit_metabolites=False, which zeros out all C_* columns).
@@ -230,10 +248,24 @@ def resolve_free_params(free_params=None, fixed_params=None) -> list:
     return [p for p in ALL_PARAMS if p in set(free_params)]
 
 # ---------------------------------------------------------------------------
-# Default bounds.  Tighten with literature where possible.
+# Default bounds -- type-specific, grounded in LITERATURE_THETA magnitudes.
+#   kcat   (1/h)        : lit range 95-4300; upper 1e4 = 2.3x above lit max.
+#   v_max_1 (mmol/gDW/h): lit = 25.7; first-estimation gave ~844; upper 5e3.
+#   Ks/Kp/Ka/K (mM)     : lit range 0.01-2.0; upper 100 is a generous cap.
+# Flat (1e-6, 1e5) was allowing kcat -> 50000 and Km -> 3000 mM in the
+# reduced estimation, producing non-physiological degenerate solutions.
 # ---------------------------------------------------------------------------
-# Kinetic parameters: strictly positive, several orders of magnitude wide.
-THETA_BOUNDS = {p: (1e-6, 1e5) for p in ALL_PARAMS}
+_KCAT_SET = {'kcat_f_2', 'kcat_f_3', 'kcat_f_4', 'kcat_f_5',
+             'kcat_f_6', 'kcat_f_7', 'kcat_f_8', 'kcat_f_9'}
+THETA_BOUNDS = {}
+for _p in ALL_PARAMS:
+    if _p in _KCAT_SET:
+        THETA_BOUNDS[_p] = (1.0, 1e4)
+    elif _p == 'v_max_1':
+        THETA_BOUNDS[_p] = (1.0, 5e3)
+    else:
+        THETA_BOUNDS[_p] = (1e-4, 100.0)
+del _p, _KCAT_SET
 
 # Balanced metabolites (mM).  Strictly-positive lower bound avoids division
 # blow-ups in the thermodynamic gamma terms.  The three *unmeasured* metabolites
@@ -449,8 +481,8 @@ class GlycolysisExperiment(Experiment):
     def __init__(self, condition, keq, S, sigma_flux, sigma_met,
                  theta_init=None, free_params=None, fixed_params=None,
                  fit_metabolites=True, u_fallback=None, x_init=None,
-                 free_imbalanced=True, u_bounds=None,
-                 data_dir: str = DEFAULT_DATA_DIR):
+                 free_imbalanced=True, u_bounds=None, x_bounds=None,
+                 theta_bounds=None, data_dir: str = DEFAULT_DATA_DIR):
         super().__init__(model=None)
         self.condition = condition
         self.data = load_condition(condition, data_dir)
@@ -470,6 +502,16 @@ class GlycolysisExperiment(Experiment):
         # are fixed to the measured / fallback values.
         self.free_imbalanced = free_imbalanced
         self.u_bounds = u_bounds if u_bounds is not None else imbalanced_bounds(data_dir)
+        # Balanced-metabolite bounds: default to the hardcoded X_BOUNDS, or a
+        # caller-supplied data-derived set (see utils.metabolite_bounds).
+        self.x_bounds = x_bounds if x_bounds is not None else X_BOUNDS
+        # Per-parameter kinetic bounds: caller-supplied overrides merged with the
+        # module-level THETA_BOUNDS default. Lists are normalized to tuples.
+        _user_tb = theta_bounds or {}
+        self.theta_bounds = {
+            p: tuple(_user_tb[p]) if p in _user_tb else THETA_BOUNDS[p]
+            for p in ALL_PARAMS
+        }
 
     # -- relative-error fallback for a metabolite without a tabulated SD -------
     def _met_sigma(self, met_key, value):
@@ -489,7 +531,7 @@ class GlycolysisExperiment(Experiment):
         # Initialization priority: explicit x_init (warm start) > measured value
         # > geometric mean of bounds.
         for key in bal_keys:
-            lb, ub = X_BOUNDS[key]
+            lb, ub = self.x_bounds[key]
             x0 = self.x_init.get(key, self.data["x_real"].get(key, np.sqrt(lb * ub)))
             x0 = float(min(max(x0, lb), ub))
             m.add_component(key, pyo.Var(bounds=(lb, ub), initialize=x0))
@@ -515,7 +557,7 @@ class GlycolysisExperiment(Experiment):
 
         # --- kinetic parameters: Vars; fix all, free ones are 'unknowns' -----
         for key in ALL_PARAMS:
-            lb, ub = THETA_BOUNDS[key]
+            lb, ub = self.theta_bounds[key]
             val = float(min(max(self.theta_init.get(key, 1.0), lb), ub))
             m.add_component(key, pyo.Var(bounds=(lb, ub), initialize=val))
             getattr(m, key).fix(val)   # parmest unfixes those it estimates
@@ -593,11 +635,11 @@ class GlycolysisExperiment(Experiment):
 _PERT_STATE = {}
 
 
-def _pert_worker_init(data_dir, conditions, u_bounds, nominal):
+def _pert_worker_init(data_dir, conditions, u_bounds, x_bounds, nominal):
     """Process-pool initializer: build the kinetics and per-condition inputs once."""
     bounds_imb = {k: u_bounds[k] for k in EcoliCarbonKinetics.imbalanced_keys}
     kin = EcoliCarbonKinetics(bounds_imbalanced_mets=bounds_imb,
-                              bounds_balanced_mets=X_BOUNDS)
+                              bounds_balanced_mets=x_bounds)
     per_cond = {}
     for cond in conditions:
         data = load_condition(cond, data_dir)
@@ -667,7 +709,8 @@ class GlycolysisParameterEstimator:
     def __init__(self, conditions=None, free_params=None, fixed_params=None,
                  fit_metabolites=True, weighted=True, theta_init=None,
                  free_imbalanced=True, data_dir: str = DEFAULT_DATA_DIR,
-                 solver_options=None):
+                 solver_options=None, x_bounds=None, u_bounds=None,
+                 theta_bounds=None):
         self.data_dir = data_dir
         self.conditions = list(conditions) if conditions else available_conditions(data_dir)
         self.free_params = resolve_free_params(free_params, fixed_params)
@@ -676,13 +719,31 @@ class GlycolysisParameterEstimator:
         self.obj_function = "SSE_weighted" if weighted else "SSE"
         self.theta_init = theta_init
         self.free_imbalanced = free_imbalanced
-        self.solver_options = solver_options or {"tol": 1e-6, "max_iter": 3000}
+        self.solver_options = self.solver_options = solver_options or {
+            "linear_solver": "mumps",                  # Default open-source solver
+            "hessian_approximation": "limited-memory", # Crucial for MUMPS speed
+            "nlp_scaling_method": "gradient-based",    # Handle biological scale differences
+            "max_iter": 2000,                          # Fail-fast cap
+            "acceptable_iter": 15,
+            "acceptable_tol": 1e-4,
+            "tol": 1e-5
+        }
 
         self.keq = load_keq(data_dir)
         self.S = build_stoichiometric_matrix()
         self.sigma_flux, self.sigma_met = load_measurement_sigmas(data_dir)
         self.u_fallback = imbalanced_fallbacks(data_dir)
-        self.u_bounds = imbalanced_bounds(data_dir)
+        self.u_bounds = u_bounds if u_bounds is not None else imbalanced_bounds(data_dir)
+        # Balanced-metabolite bounds shared by the Pyomo fit and the CasADi model;
+        # default X_BOUNDS, or a data-derived set from metabolite_bounds().
+        self.x_bounds = x_bounds if x_bounds is not None else X_BOUNDS
+        # Per-parameter kinetic bounds passed down to each experiment and used by
+        # multistart(). Omitted params fall back to the module-level THETA_BOUNDS.
+        _user_tb = theta_bounds or {}
+        self.theta_bounds = {
+            p: tuple(_user_tb[p]) if p in _user_tb else THETA_BOUNDS[p]
+            for p in ALL_PARAMS
+        }
 
         self._validate_inputs()
         self.exp_list = self._build_experiments()
@@ -705,7 +766,7 @@ class GlycolysisParameterEstimator:
     def _make_estimator(self):
         return parmest.Estimator(
             self.exp_list, obj_function=self.obj_function, tee=False,
-            solver_options=self.solver_options,
+            solver_options=self.solver_options, 
         )
 
     def _build_experiments(self):
@@ -715,6 +776,7 @@ class GlycolysisParameterEstimator:
                 theta_init=self.theta_init, free_params=self.free_params,
                 fit_metabolites=self.fit_metabolites, u_fallback=self.u_fallback,
                 free_imbalanced=self.free_imbalanced, u_bounds=self.u_bounds,
+                x_bounds=self.x_bounds, theta_bounds=self.theta_bounds,
                 data_dir=self.data_dir,
             )
             for cond in self.conditions
@@ -755,21 +817,31 @@ class GlycolysisParameterEstimator:
         return self.theta
 
     # -- covariance & correlation --------------------------------------------
-    def covariance(self, method: str = "finite_difference"):
+    def covariance(self, method: str = "finite_difference", solver: str = "ipopt",
+                   step: float = 1e-3):
         """
         Parameter covariance matrix Sigma (pd.DataFrame), via parmest's ``cov_est``.
-        ``method`` is 'finite_difference', 'reduced_hessian', or
-        'automatic_differentiation_kaug'.  Falls back to the deprecated
-        ``theta_est(calc_cov=...)`` on older parmest.
+
+        method : str
+            'finite_difference' (default, ipopt-only) or 'reduced_hessian'
+            (requires PyNumero/k_aug -- may not be available in all envs).
+            'automatic_differentiation_kaug' requires k_aug + dot_sens binaries.
         """
         valid = {"finite_difference", "reduced_hessian", "automatic_differentiation_kaug"}
         if method not in valid:
             raise ValueError(f"Unknown covariance method '{method}'. Choose from {valid}.")
+
         if self.theta is None:
             self.estimate()
+
         if hasattr(self.pest, "cov_est"):
-            self._cov = self.pest.cov_est(method=method, solver="ipopt")
-        else:  # legacy parmest
+            try:
+                self._cov = self.pest.cov_est(method=method, solver=solver, step=step)
+            except AssertionError:
+                # parmest assertion: n_experiments > n_free_params -- bypass by
+                # calling the underlying routine directly.
+                self._cov = self.pest._cov_at_theta(method=method, solver=solver, step=step)
+        else:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 self.obj_value, self.theta, self._cov = self.pest.theta_est(
@@ -827,7 +899,7 @@ class GlycolysisParameterEstimator:
         if self._kin is None:
             bounds_imb = {k: self.u_bounds[k] for k in EcoliCarbonKinetics.imbalanced_keys}
             self._kin = EcoliCarbonKinetics(bounds_imbalanced_mets=bounds_imb,
-                                            bounds_balanced_mets=X_BOUNDS)
+                                            bounds_balanced_mets=self.x_bounds)
         return self._kin
 
     def sensitivity_matrix(self, theta=None, conditions=None, kind="both"):
@@ -987,7 +1059,7 @@ class GlycolysisParameterEstimator:
         Returns
         -------
         Prediction
-            .predicted  -- (n_cond x 18) DataFrame; cells masked NaN where real is NaN.
+            .predicted  -- (n_cond x 18) DataFrame; full model output, all cells finite.
             .real       -- (n_cond x 18) DataFrame; NaN where not measured.
             .rmse       -- {'met': float, 'flux': float, 'data_norm': float}.
                            See Prediction docstring for normalization details.
@@ -1022,7 +1094,8 @@ class GlycolysisParameterEstimator:
             real_rows[cond] = row
         real_df = pd.DataFrame(real_rows, index=out_cols).T.astype(float)
         real_df = real_df[out_cols]
-        pred_aligned = pred_df.copy().reindex(columns=out_cols)
+        pred_full = pred_df.reindex(columns=out_cols)
+        pred_aligned = pred_full.copy()
         pred_aligned[real_df.isna()] = float("nan")
         residual = pred_aligned - real_df
         def _nanrmse(arr):
@@ -1078,7 +1151,7 @@ class GlycolysisParameterEstimator:
                 per_output[col] = val
         per_output = pd.Series(per_output, dtype=float)
         return Prediction(
-            predicted=pred_aligned,
+            predicted=pred_full,
             real=real_df,
             rmse={"met": rmse_met, "flux": rmse_flux,
                   "data_norm": rmse_norm, "weighted": rmse_wgt},
@@ -1096,139 +1169,80 @@ class GlycolysisParameterEstimator:
         return self.predict(theta=theta, conditions=conditions).rmse
 
     # -- multistart -----------------------------------------------------------
-    def multistart(self, method: str = "multistart", n_starts: int = 20,
-                   seed=None, engine: str = "sampling", **kwargs) -> dict:
+    def multistart(self, iterations: int = 10,
+                   seed=None, strategy: str = "rand",
+                   stopping_mass: float = 0.5,
+                   stopping_delta: float = 0.5,
+                   HCS_max_iterations: int = 1000,
+                   HCS_tolerance: float = 0,
+                   suppress_unbounded_warning: bool = False,
+                   verbose: bool = False) -> dict:
         """
-        Multi-start or bootstrap estimation to explore the objective landscape.
+        Pyomo-native multistart estimation via pyo.SolverFactory('multistart').
 
         Parameters
         ----------
-        method : 'multistart' or 'bootstrap'
-            'multistart' -- pyomo.contrib.multistart solves parmest's extensive-form
-                (EF) model from multiple random starts (see note below); falls back
-                to a looped theta_est if that solver path raises.
-            'bootstrap'  -- parmest theta_est_bootstrap (scenario resampling).
-        n_starts : int
-            Number of restarts (multistart) or bootstrap samples.
+        iterations : int
+            Number of restarts. Default 10. Pass -1 to use the high-confidence
+            stopping (HCS) rule instead of a fixed count (requires strategy='rand'
+            or 'rand_guess_and_bound'; control via stopping_mass / stopping_delta).
         seed : int or None
-            Random seed for reproducibility.
-        engine : 'sampling' | 'solver' | 'auto'   (multistart only)
-            'sampling' -- diverse seeded restarts of theta_est() from perturbed
-                          initial points (DEFAULT; robust -- does not depend on the
-                          EF re-solving).  Effectiveness varies with n_starts and
-                          spread; wide starts can fail to converge, so watch
-                          'n_converged' in the result.
-            'solver'   -- pyo.SolverFactory('multistart') on parmest's extensive-form
-                          (EF) model (the Pyomo meta-solver; see note below).
-            'auto'     -- try 'solver', fall back to 'sampling' on error.
-        Both engines are stochastic on this non-convex problem and neither uniformly
-        dominates -- compare 'best_obj' and read the diagnostics ('all_runs',
-        'n_converged', 'frac_within') rather than assuming one is always better.
-        **kwargs : additional keyword arguments
-            For 'multistart': 'strategy' (random sampling strategy for the Pyomo
-                meta-solver, default 'rand'); 'spread' (lognormal width for the
-                sampling engine, default 0.75); 'distribution' ('lognormal' or
-                'loguniform' for the sampling engine); 'factor' (loguniform
-                half-width, default 3.0).
-            For 'bootstrap':  'return_samples' (bool, default False); 'samplesize'
-                (scenarios per bootstrap sample, default = number of conditions).
+            Random seed passed to numpy before the meta-solver runs.
+        strategy : str
+            Restart sampling strategy. One of:
+              'rand'                    -- random within variable bounds (default)
+              'midpoint_guess_and_bound'-- midpoint between current value and far bound
+              'rand_guess_and_bound'    -- random between current value and far bound
+              'rand_distributed'        -- random among evenly spaced values
+              'midpoint'                -- exact midpoint (multiple iterations pointless)
+        stopping_mass : float
+            HCS: max allowable estimated missing probability mass of optima.
+            Lower = stricter. Bounded in (0, 1]. Default 0.5.
+        stopping_delta : float
+            HCS: 1 minus the required confidence level. Lower = stricter.
+            Bounded in (0, 1]. Default 0.5.
+        HCS_max_iterations : int
+            Maximum iterations before interrupting HCS. Default 1000.
+        HCS_tolerance : float
+            Tolerance on objective equality for HCS. Default 0 (Python float
+            equality precision).
+        suppress_unbounded_warning : bool
+            Suppress the Pyomo warning for skipping unbounded variables. Default False.
 
         Returns
         -------
         dict with keys:
-            'best_theta' (pd.Series)  -- best estimated parameters found.
-            'best_obj'   (float)      -- best objective value (NaN for bootstrap).
-            'all_runs'   (pd.DataFrame) -- one row per restart / bootstrap sample,
-                         sorted ascending by 'obj_value' (multistart), with a
-                         'converged' bool column.
-            'method'     (str)        -- 'multistart' or 'bootstrap'.
-            'engine'     (str, multistart only) -- 'solver' or 'sampling' (which ran).
-            'n_converged'(int, multistart only) -- restarts that solved successfully.
-            'obj_median' (float, multistart only) -- median converged objective.
-            'frac_within'(float, multistart only) -- fraction of converged starts
-                         whose objective is within 1% of 'best_obj' (a basin-of-
-                         attraction signal: low -> many basins -> keep adding starts).
-            'stats'      (pd.DataFrame, bootstrap only) -- mean/std/quantiles
-                         of bootstrap theta samples (rows=params, cols=[mean,std,q05,q50,q95]).
+            'best_theta'  (pd.Series)    -- best parameter vector found.
+            'best_obj'    (float)        -- best objective value.
+            'all_runs'    (pd.DataFrame) -- one row per start (single-start incumbent
+                          + multistart result), sorted ascending by 'obj_value', with
+                          a 'converged' bool column.
+            'method'      (str)          -- always 'multistart'.
+            'n_converged' (int)          -- number of converged restarts.
+            'obj_median'  (float)        -- median converged objective.
+            'frac_within' (float)        -- fraction of converged starts within 1%
+                          of best_obj (basin-of-attraction signal: low -> many basins).
 
-        Notes on the Pyomo multistart meta-solver
-        ------------------------------------------
-        pyo.SolverFactory('multistart') is a meta-solver: it re-solves the SAME model
-        from many randomized initial points with an inner local solver (ipopt) and
-        keeps the best feasible objective.  Key options: 'iterations' (number of
-        restarts), 'strategy' ('rand', 'rand_distributed', 'midpoint_guess_and_bound',
-        'rand_guess_and_bound'), and 'solver' (the inner NLP solver).  Here it is
-        applied to parmest's extensive-form model (self.pest.ef_instance, built by one
-        theta_est() call); the fitted theta is then read off the EF first-stage vars.
-        The 'sampling' engine instead restarts the whole theta_est() from perturbed
-        initial parameter values -- more robust when the EF path does not re-solve.
+        Notes
+        -----
+        pyo.SolverFactory('multistart') re-solves the SAME Pyomo model (parmest's
+        extensive-form) from multiple randomized starting points using ipopt as the
+        inner NLP solver, then keeps the best feasible objective found. The fitted
+        theta and objective are written back to self.theta / self.obj_value so that
+        covariance() and correlation_matrix() pick up the multistart result.
         """
         check_solver("ipopt")
-        if method == "bootstrap":
-            return_samples = kwargs.get("return_samples", False)
-            samplesize = kwargs.get("samplesize", None)
-            # parmest builds each bootstrap sample by resampling whole scenarios
-            # (conditions) and rejects samples whose number of DISTINCT scenarios
-            # is <= the number of free parameters.  With samplesize defaulting to
-            # the scenario count, bootstrap is only feasible when there are more
-            # conditions than free parameters; otherwise parmest raises an opaque
-            # "timeout constructing a sample" error.  Guard it with a clear message.
-            eff_samplesize = samplesize if samplesize is not None else len(self.conditions)
-            n_theta = len(self.free_params)
-            if eff_samplesize <= n_theta:
-                raise ValueError(
-                    f"bootstrap needs more distinct scenarios per sample than free "
-                    f"parameters: samplesize={eff_samplesize} but {n_theta} free "
-                    f"parameters.  Use more conditions (currently {len(self.conditions)}) "
-                    f"or fewer free parameters (e.g. fixed_params=REPORT_FIXED_PARAMS), "
-                    f"or pass a larger samplesize."
-                )
-            boot_kwargs = dict(
-                bootstrap_samples=n_starts,
-                seed=seed,
-                return_samples=return_samples,
-            )
-            if samplesize is not None:
-                boot_kwargs["samplesize"] = samplesize
-            bt = self.pest.theta_est_bootstrap(**boot_kwargs)
-            best_theta = bt.drop(columns=["samples"], errors="ignore").mean()
-            stats_cols = bt.drop(columns=["samples"], errors="ignore")
-            stats = pd.DataFrame({
-                "mean":  stats_cols.mean(),
-                "std":   stats_cols.std(),
-                "q05":   stats_cols.quantile(0.05),
-                "q50":   stats_cols.quantile(0.50),
-                "q95":   stats_cols.quantile(0.95),
-            })
-            return {
-                "best_theta": best_theta,
-                "best_obj":   float("nan"),
-                "all_runs":   bt,
-                "method":     "bootstrap",
-                "stats":      stats,
-            }
-        if method != "multistart":
-            raise ValueError(f"method must be 'multistart' or 'bootstrap', got '{method}'.")
-        if engine not in ("auto", "solver", "sampling"):
-            raise ValueError(f"engine must be 'auto', 'solver' or 'sampling', got '{engine}'.")
-        strategy = kwargs.get("strategy", "rand")
-        if engine == "sampling":
-            return self._multistart_looped(n_starts, seed, **kwargs)
-        if engine == "solver":
-            return self._multistart_ef(n_starts, seed, strategy)
-        # engine == "auto": try the Pyomo meta-solver, fall back to sampling.
-        try:
-            return self._multistart_ef(n_starts, seed, strategy)
-        except Exception as exc:  # noqa: BLE001
-            warnings.warn(
-                f"multistart: solver engine (pyo.SolverFactory('multistart')) failed "
-                f"({exc}); falling back to the sampling engine.",
-                stacklevel=2,
-            )
-        return self._multistart_looped(n_starts, seed, **kwargs)
+        return self._multistart_ef(seed, strategy,
+                                   iterations=iterations,
+                                   stopping_mass=stopping_mass,
+                                   stopping_delta=stopping_delta,
+                                   HCS_max_iterations=HCS_max_iterations,
+                                   HCS_tolerance=HCS_tolerance,
+                                   suppress_unbounded_warning=suppress_unbounded_warning,
+                                   verbose=verbose)
 
     @staticmethod
-    def _finalize_multistart(best_series, best_obj, all_runs, engine, within=0.01):
+    def _finalize_multistart(best_series, best_obj, all_runs, within=0.01):
         """
         Attach global-search diagnostics to a multistart result dict: sort all_runs
         ascending by objective, flag converged restarts, and report how concentrated
@@ -1253,122 +1267,112 @@ class GlycolysisParameterEstimator:
             "best_obj":    best_obj,
             "all_runs":    all_runs,
             "method":      "multistart",
-            "engine":      engine,
             "n_converged": n_conv,
             "obj_median":  obj_median,
             "frac_within": frac_within,
         }
 
-    def _multistart_ef(self, n_starts, seed, strategy):
+    @staticmethod
+    def _ef_objective(ef):
+        """Active EF objective component across parmest versions (new: Obj, old: EF_Obj)."""
+        if hasattr(ef, "Obj"):
+            return ef.Obj
+        return ef.EF_Obj
+
+    @staticmethod
+    def _read_ef_theta(ef):
         """
-        Solver engine: solve parmest's extensive-form (EF) model with
-        pyo.SolverFactory('multistart') (n_starts random restarts via ipopt), then
-        read the fitted theta off the EF's first-stage variables.
+        Read theta off the EF first-stage variables, supporting both the new
+        parmest scenario-block API (6.9.5+, ef.parmest_theta indexed Var) and
+        the legacy non-anticipative EF (ef_nonants).
         """
+        if hasattr(ef, "parmest_theta"):
+            return {str(name): float(pyo.value(ef.parmest_theta[name]))
+                    for name in ef.parmest_theta}
         from pyomo.contrib.parmest.parmest import ef_nonants
+        vals = {}
+        for _nd_name, var, sol_val in ef_nonants(ef):
+            var_name = var.name[var.name.find(".") + 1:]
+            vals[var_name] = float(sol_val)
+        return vals
+
+    @staticmethod
+    def _set_ef_theta(ef, theta):
+        """Write theta back onto the EF first-stage variables (both parmest APIs)."""
+        if hasattr(ef, "parmest_theta"):
+            for name in ef.parmest_theta:
+                key = str(name)
+                if key in theta:
+                    ef.parmest_theta[name].set_value(theta[key])
+            return
+        from pyomo.contrib.parmest.parmest import ef_nonants
+        for _nd, _var, _val in ef_nonants(ef):
+            _vname = _var.name[_var.name.find(".") + 1:]
+            if _vname in theta:
+                _var.set_value(theta[_vname])
+
+    def _multistart_ef(self, seed, strategy, iterations,
+                       stopping_mass, stopping_delta, HCS_max_iterations, HCS_tolerance,
+                       suppress_unbounded_warning=False, verbose=False):
+        """
+        Solve parmest's extensive-form (EF) with pyo.SolverFactory('multistart'),
+        then read the best theta off the EF first-stage variables.
+        """
         if seed is not None:
             np.random.seed(seed)
         free = list(self.free_params)
 
-        def _read_ef_theta(ef):
-            vals = {}
-            for _nd_name, var, sol_val in ef_nonants(ef):
-                var_name = var.name[var.name.find(".") + 1:]
-                vals[var_name] = float(sol_val)
-            return vals
+        # verbose also drives the base incumbent solve below (and any later
+        # cov_est) via parmest's own tee flag, not just the multistart restarts.
+        self.pest.tee = verbose
 
         # One theta_est() builds and stores self.pest.ef_instance and leaves the EF
         # at the single-start solution.  Capture that theta as the incumbent.
         base_obj, _ = self.pest.theta_est()
         ef = self.pest.ef_instance
-        base_theta = _read_ef_theta(ef)
+        base_theta = self._read_ef_theta(ef)
+
         # pyomo.contrib.multistart restarts ipopt from random points.  Note: its
         # num_iter==1 bookkeeping can leave the EF at a WORSE point than the
         # incumbent, so we compare objectives explicitly and keep the better theta
         # (never return a best_theta inconsistent with best_obj).
         ms = pyo.SolverFactory("multistart")
-        ms_opts = dict(iterations=n_starts, strategy=strategy, solver="ipopt")
-        if self.solver_options:
-            ms_opts["solver_args"] = {"options": dict(self.solver_options)}
+        ms_opts = dict(strategy=strategy, solver="ipopt",
+                       iterations=iterations,
+                       stopping_mass=stopping_mass, stopping_delta=stopping_delta,
+                       HCS_max_iterations=HCS_max_iterations, HCS_tolerance=HCS_tolerance,
+                       suppress_unbounded_warning=suppress_unbounded_warning)
+        solver_opts = dict(self.solver_options) if self.solver_options else {}
+        if not verbose:
+            solver_opts["print_level"] = 0
+        # tee=True is what actually routes ipopt stdout to the terminal;
+        # print_level alone is not enough because Pyomo suppresses it by default.
+        ms_opts["solver_args"] = {"options": solver_opts, "tee": verbose}
         ms.solve(ef, **ms_opts)
-        ms_theta = _read_ef_theta(ef)
-        ms_obj = float(pyo.value(ef.EF_Obj))
+        ms_theta = self._read_ef_theta(ef)
+        ms_obj = float(pyo.value(self._ef_objective(ef)))
         if ms_obj < float(base_obj):
             best_obj, best_theta = ms_obj, ms_theta
         else:
             best_obj, best_theta = float(base_obj), base_theta
+            # Multistart left the EF at its own best endpoint, which is worse
+            # than the single-start incumbent. Reset EF theta to base_theta so
+            # pest.cov_est() computes the Hessian at self.theta, not at ms_theta.
+            self._set_ef_theta(ef, base_theta)
         best_series = pd.Series(
             {p: float(best_theta[p]) for p in free}, name="best_theta"
         )
+        # Update estimator state so covariance() / correlation_matrix() see the
+        # multistart result rather than falling back to a fresh single-start fit.
+        self.obj_value = best_obj
+        self.theta = best_series
         all_runs = pd.DataFrame([
             {"start": "single", "obj_value": float(base_obj),
              **{p: float(base_theta[p]) for p in free}},
             {"start": "multistart", "obj_value": ms_obj,
              **{p: float(ms_theta[p]) for p in free}},
         ])
-        return self._finalize_multistart(best_series, best_obj, all_runs, "solver")
-
-    def _multistart_looped(self, n_starts, seed, **kwargs):
-        """
-        Sampling engine: call theta_est() n_starts times from perturbed initial
-        values of the free parameters, keeping the best.  Wide, seeded sampling so
-        the restarts genuinely explore the parameter space toward a global optimum.
-
-        kwargs: 'spread' (lognormal width, default 0.75; alias 'rel_sigma');
-        'distribution' ('lognormal' default, or 'loguniform'); 'factor' (loguniform
-        half-width, default 3.0).
-        """
-        rng = np.random.default_rng(seed)
-        spread = float(kwargs.get("spread", kwargs.get("rel_sigma", 0.75)))
-        distribution = kwargs.get("distribution", "lognormal")
-        factor = float(kwargs.get("factor", 3.0))
-        if distribution not in ("lognormal", "loguniform"):
-            raise ValueError("distribution must be 'lognormal' or 'loguniform'.")
-        nominal = self._full_theta(None)
-        free = list(self.free_params)
-        best_obj = float("inf")
-        best_theta = None
-        run_records = []
-        for i in range(n_starts):
-            perturbed = {}
-            for p in free:
-                base = float(nominal.get(p, LITERATURE_THETA.get(p, 1.0)))
-                lb, ub = THETA_BOUNDS[p]
-                if distribution == "lognormal":
-                    val = base * float(np.exp(rng.normal(0.0, spread)))
-                else:
-                    val = base * float(np.exp(rng.uniform(np.log(1.0 / factor),
-                                                          np.log(factor))))
-                perturbed[p] = float(min(max(val, lb), ub))
-            orig_theta_init = self.theta_init
-            self.theta_init = perturbed
-            self.exp_list = self._build_experiments()
-            self.pest = self._make_estimator()
-            try:
-                obj_i, theta_i = self.pest.theta_est()
-                obj_i = float(obj_i)
-                run_records.append({"start": i, "obj_value": obj_i,
-                                    **{p: float(theta_i[p]) for p in free}})
-                if obj_i < best_obj:
-                    best_obj = obj_i
-                    best_theta = theta_i
-            except Exception as exc:  # noqa: BLE001
-                run_records.append({"start": i, "obj_value": float("nan"),
-                                    **{p: float("nan") for p in free}})
-                warnings.warn(f"multistart restart {i} failed: {exc}", stacklevel=2)
-            finally:
-                self.theta_init = orig_theta_init
-                self.exp_list = self._build_experiments()
-                self.pest = self._make_estimator()
-        all_runs = pd.DataFrame(run_records)
-        if best_theta is not None:
-            best_series = pd.Series(
-                {p: float(best_theta[p]) for p in free}, name="best_theta"
-            )
-        else:
-            best_series = pd.Series({p: float("nan") for p in free}, name="best_theta")
-        best_obj_final = best_obj if best_theta is not None else float("nan")
-        return self._finalize_multistart(best_series, best_obj_final, all_runs, "sampling")
+        return self._finalize_multistart(best_series, best_obj, all_runs)
 
     @staticmethod
     def _correlation(x, Y, rank=True):
@@ -1470,7 +1474,7 @@ class GlycolysisParameterEstimator:
             chunk = max(1, len(tasks) // (workers * 8))
             with ProcessPoolExecutor(
                 max_workers=workers, initializer=_pert_worker_init,
-                initargs=(self.data_dir, conditions, self.u_bounds, nominal),
+                initargs=(self.data_dir, conditions, self.u_bounds, self.x_bounds, nominal),
             ) as ex:
                 for param, value, y in ex.map(_pert_worker_eval, tasks, chunksize=chunk):
                     if y is not None:
