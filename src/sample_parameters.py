@@ -83,8 +83,13 @@ def kcat_convert(kcat_s, enzyme):
 # ---------------------------------------------------------------------------
 # Bar-Even 2011 distribution parameters
 # ---------------------------------------------------------------------------
-KCAT_MEDIAN_S = 79
-KCAT_RANGE_S = [50, 90]
+# kcat: no enzyme-specific data, so use an informed prior. Median 250 s^-1 sits
+# in the glycolytic-enzyme range (PGI/PGK reach 400-1000; PFK/GAPDH ~100-300),
+# well above the too-slow central-carbon median of 79. The 95% range [20, 2000]
+# gives a realistic log-space spread (sigma ~1.2, ~4 orders of magnitude) instead
+# of the near-degenerate [50, 90] that pinned every enzyme at ~79 s^-1.
+KCAT_MEDIAN_S = 250
+KCAT_RANGE_S = [20, 2000]
 KCATKM_MEDIAN = 410
 KCATKM_RANGE = [300, 500]
 KM_MEDIAN_MM = 0.500
@@ -193,15 +198,9 @@ def load_theta_init(path="Data/theta_init_sampled.csv"):
     df = pd.read_csv(path, index_col="param")
     return {p: float(df.loc[p, "value"]) for p in df.index}
 
-
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
-
-
 if __name__ == "__main__":
 
-    seed = 0
+    seed = 42
     out_path = "../Data/theta_init_sampled.csv"
     theta = build_theta_init(seed=seed)
     df = build_theta_sources_df(theta)

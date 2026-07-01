@@ -851,12 +851,14 @@ class GlycolysisParameterEstimator:
     def correlation_matrix(self):
         """Correlation matrix r_ij = Sigma_ij / (sigma_i sigma_j) from the covariance."""
         cov = self._cov if self._cov is not None else self.covariance()
-        C = cov.to_numpy()
-        d = np.sqrt(np.clip(np.diag(C), 0.0, None))
-        denom = np.outer(d, d)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            R = np.where(denom > 0, C / denom, 0.0)
-        return pd.DataFrame(np.clip(R, -1.0, 1.0), index=cov.index, columns=cov.columns)
+        corr = np.zeros(cov.shape)
+        for i in range(cov.shape[0]):
+            for j in range(cov.shape[1]):
+                if cov.iloc[i,i]*cov.iloc[j,j] > 0:
+                    corr[i,j] = cov.iloc[i,j]/np.sqrt(cov.iloc[i,i]*cov.iloc[j,j])
+                else:
+                    corr[i,j] = 0.0
+        return pd.DataFrame(np.clip(corr, -1.0, 1.0), index=cov.index, columns=cov.columns)
 
     def confidence_intervals(self, alpha: float = 0.05):
         """Marginal CIs theta_i +/- t*sigma_i, with standard errors and CV%."""

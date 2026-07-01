@@ -77,25 +77,48 @@ def load_data_frames(data_dir="Data"):
 # ---------------------------------------------------------------------------
 # Pipeline functions moved verbatim from sensitivity_pipeline.py
 # ---------------------------------------------------------------------------
-def metabolite_bounds(data_dir="Data", n_std=3.0, floor=1e-6):
+def metabolite_bounds(data_dir="Data", n_std=3.0, floor=1e-6,
+                      mode=("log_std", "data_range"), slack=0.1):
     """Per-metabolite concentration bounds from the across-condition data.
 
-    This is a MODELING CHOICE. For each metabolite, `mu` and `sigma` are the mean
-    and std of ln(C) over the conditions with positive measurements, and the bound
-    is `[max(exp(mu - n_std*sigma), floor), exp(mu + n_std*sigma)]` -- log-space
-    (geometric), so positivity is guaranteed and the spread matches the typically
-    log-normal distribution of metabolite levels. `n_std` is the user knob: how
-    much room the steady state has to move around the observed regime (default 3).
+    mode controls the bounding strategy independently for balanced and imbalanced
+    metabolites.  Pass a single string to apply the same rule to both groups, or
+    a 2-tuple (balanced_mode, imbalanced_mode) to use different rules per group.
 
-    Metabolites with fewer than 2 positive measurements (e.g. the unmeasured
-    C_g3p / C_pgp / C_2pg) fall back to a wide default `(floor, global_max)`, where
-    `global_max` is the largest upper bound among that group's measured metabolites.
+    Supported modes:
+        "log_std"    -- [max(exp(mu - n_std*sigma), floor), exp(mu + n_std*sigma)]
+                        where mu, sigma are the mean/std of ln(C) over positive
+                        measurements.  Deliberately wider than the observed range
+                        to give the steady-state solver room to search.
+        "data_range" -- [max(min_positive * (1 - slack), floor), max_measured * (1 + slack)].
+                        The observed min/max expanded by a fractional slack on each
+                        side (default slack=0.1, i.e. 10%).  Zero measurements (e.g.
+                        C_glc in KO16) are excluded from the lower bound since
+                        log-kinetics require positive concentrations; floor then acts
+                        as the effective lower limit.
 
-    Computes BOTH the balanced (X) and imbalanced/cofactor (U) bound sets with the
-    same rule. Returns `(u_bounds, x_bounds)` -- imbalanced first, then balanced.
+    slack : float
+        Fractional expansion applied to the "data_range" lower and upper bounds.
+        slack=0.0 gives exact min/max; slack=0.1 (default) gives +/-10%.
+        Ignored for "log_std" mode.
+
+    Default mode=("log_std", "data_range"):
+        balanced (internal)  -> log_std: the optimizer needs room beyond observations
+        imbalanced (cofactor) -> data_range + slack: inputs stay near physiological range
+
+    Metabolites with no positive data (C_pi, C_g3p, C_pgp, C_2pg) fall back to
+    (floor, global_max), where global_max is the largest upper bound among measured
+    metabolites in the same group, regardless of mode.
+
+    Returns (u_bounds, x_bounds) -- imbalanced first, then balanced.
     """
     bal_df = pd.read_csv("%s/balanced_metabolites.csv" % data_dir, index_col=0)
     imb_df = pd.read_csv("%s/imbalanced_metabolites.csv" % data_dir, index_col=0)
+
+    if isinstance(mode, str):
+        bal_mode = imb_mode = mode
+    else:
+        bal_mode, imb_mode = mode
 
     def _log_range(series):
         v = pd.to_numeric(series, errors="coerce").dropna().to_numpy(dtype=float)
@@ -108,11 +131,22 @@ def metabolite_bounds(data_dir="Data", n_std=3.0, floor=1e-6):
         return (max(float(np.exp(mu - n_std * sigma)), floor),
                 float(np.exp(mu + n_std * sigma)))
 
-    def _group_bounds(keys, df):
+    def _data_range(series):
+        v = pd.to_numeric(series, errors="coerce").dropna().to_numpy(dtype=float)
+        v = v[v > 0]
+        if v.size < 1:
+            return None
+        return (max(float(v.min()) * (1.0 - slack), floor),
+                float(v.max()) * (1.0 + slack))
+
+    _fns = {"log_std": _log_range, "data_range": _data_range}
+
+    def _group_bounds(keys, df, m):
+        bound_fn = _fns[m]
         bounds = {}
         measured_hi = []
         for k in keys:
-            rng = _log_range(df.loc[k]) if k in df.index else None
+            rng = bound_fn(df.loc[k]) if k in df.index else None
             if rng is not None:
                 bounds[k] = rng
                 measured_hi.append(rng[1])
@@ -121,8 +155,8 @@ def metabolite_bounds(data_dir="Data", n_std=3.0, floor=1e-6):
             bounds.setdefault(k, (floor, global_max))
         return bounds
 
-    x_bounds = _group_bounds(EcoliCarbonKinetics.balanced_keys, bal_df)
-    u_bounds = _group_bounds(EcoliCarbonKinetics.imbalanced_keys, imb_df)
+    u_bounds = _group_bounds(EcoliCarbonKinetics.imbalanced_keys, imb_df, imb_mode)
+    x_bounds = _group_bounds(EcoliCarbonKinetics.balanced_keys, bal_df, bal_mode)
     return u_bounds, x_bounds
 
 
