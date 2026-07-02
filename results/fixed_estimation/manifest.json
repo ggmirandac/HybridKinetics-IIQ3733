@@ -27,5 +27,6 @@
     "KO24",
     "RF03"
   ],
-  "n_measured": 14
+  "n_measured": 14,
+  "confidence_intervals": "a-priori Cramer-Rao from relative-sensitivity FIM at literature theta"
 }

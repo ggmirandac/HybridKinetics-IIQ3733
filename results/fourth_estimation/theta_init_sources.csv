@@ -1,38 +1,38 @@
 param,value,status,type,source
-v_max_1,3301.7286887684886,free,free,Estimated
-Ka1_1,28.729085536211073,free,free,Estimated
-Ka2_1,30.534482008117234,free,free,Estimated
-Ka3_1,49.43447925696631,free,free,Estimated
-K_g6p_1,0.5,fixed,fixed,Literature
-Ks_g6p_pgi,1.018,free,free,Estimated
-Kp_f6p_pgi,51.03691412376312,free,free,Estimated
-kcat_f_2,5854.523422082647,free,free,Estimated
-Ks_f6p_3,0.7842685004361084,free,free,Estimated
-Ks_atp_3,22.508346564758856,free,free,Estimated
-Kp_fbp_3,51.295828375680784,free,free,Estimated
-Kp_adp_3,50.444916706753794,free,free,Estimated
-kcat_f_3,6197.134343615228,free,free,Estimated
-Ks_fbp_4,63.79967182511203,free,free,Estimated
-Kp_g3p_4,50.77234921060892,free,free,Estimated
-Kp_dhap_4,50.87729979576813,free,free,Estimated
-kcat_f_4,2572.703889797393,free,free,Estimated
-kcat_f_5,5524.884015623926,free,free,Estimated
-Ks_dhap_5,1.03,free,free,Estimated
-Kp_g3p_5,0.6341260495962968,free,free,Estimated
-kcat_f_6,5493.581666669661,free,free,Estimated
-Ks_g3p_6,0.89,free,free,Estimated
-Ks_pi_6,0.53,free,free,Estimated
-Ks_nad_6,0.045,free,free,Estimated
-Kp_pgp_6,0.5494788808501719,free,free,Estimated
-Kp_nadh_6,0.5116074283387803,free,free,Estimated
-kcat_f_7,2222.264843660479,free,free,Estimated
-Ks_pgp_7,0.0001950957984638,free,free,Estimated
-Ks_adp_7,0.0001950957984638,free,free,Estimated
-Ks_3pg_7,1.2999538843037957,free,free,Estimated
-Ks_atp_7,1.2665983167167822,free,free,Estimated
-kcat_f_8,3933.4234865848102,free,free,Estimated
-Ks_3pg_8,16.394098096612037,free,free,Estimated
-Ks_2pg_8,0.19,free,free,Estimated
-kcat_f_9,4237.025203709531,free,free,Estimated
-Ks_2pg_9,0.1,free,free,Estimated
-Ks_pep_9,50.03914313053541,free,free,Estimated
+v_max_1,75.94770155231049,free,free,Estimated
+Ka1_1,0.0017093158883137,fixed,fixed,Literature (held at 3rd-est value)
+Ka2_1,0.0659766745775291,free,free,Estimated
+Ka3_1,6.805769757611634,free,free,Estimated
+K_g6p_1,11.022370183598388,free,free,Estimated
+Ks_g6p_pgi,6.215532234274075,free,free,Estimated
+Kp_f6p_pgi,10.053133795617752,fixed,fixed,Literature (held at 3rd-est value)
+kcat_f_2,529.0556574955078,free,free,Estimated
+Ks_f6p_3,0.6645387274700965,fixed,fixed,Literature (held at 3rd-est value)
+Ks_atp_3,2.010080309653304,fixed,fixed,Literature (held at 3rd-est value)
+Kp_fbp_3,9.994058559613192,fixed,fixed,Literature (held at 3rd-est value)
+Kp_adp_3,10.024400588123411,fixed,fixed,Estimated
+kcat_f_3,771.2295925574713,free,free,Estimated
+Ks_fbp_4,0.0031370096545687,fixed,fixed,Literature (held at 3rd-est value)
+Kp_g3p_4,10.068125505743485,fixed,fixed,Estimated
+Kp_dhap_4,10.144934970862984,fixed,fixed,Estimated
+kcat_f_4,3.671318695416455,free,free,Estimated
+kcat_f_5,2374.9544638151383,free,free,Estimated
+Ks_dhap_5,0.0012273414187519,fixed,fixed,Literature (held at 3rd-est value)
+Kp_g3p_5,10.797906416294284,fixed,fixed,Estimated
+kcat_f_6,371.19928101161986,free,free,Estimated
+Ks_g3p_6,1.071529795669161,fixed,fixed,Literature (held at 3rd-est value)
+Ks_pi_6,6.862286322538351,fixed,fixed,Literature (held at 3rd-est value)
+Ks_nad_6,0.001017726660131,fixed,fixed,Literature (held at 3rd-est value)
+Kp_pgp_6,9.987748072000874,fixed,fixed,Estimated
+Kp_nadh_6,10.00296694182834,fixed,fixed,Estimated
+kcat_f_7,986.2666725575644,free,free,Estimated
+Ks_pgp_7,0.0014479031109328,fixed,fixed,Estimated
+Ks_adp_7,0.0014479031109329,fixed,fixed,Estimated
+Ks_3pg_7,9.48348841628496,fixed,fixed,Estimated
+Ks_atp_7,9.358753432485184,fixed,fixed,Estimated
+kcat_f_8,581.9153952392758,free,free,Estimated
+Ks_3pg_8,2.464532596478296,free,free,Estimated
+Ks_2pg_8,9.95022539887144,fixed,fixed,Literature (held at 3rd-est value)
+kcat_f_9,278.99279465555793,free,free,Estimated
+Ks_2pg_9,0.1559498072704688,free,free,Estimated
+Ks_pep_9,7.461119119264586,fixed,fixed,Estimated

@@ -671,6 +671,113 @@ def _pert_worker_eval(task):
 
 
 # ===========================================================================
+# Parallel workers for the bootstrap resampling loop (case bootstrap over
+# experimental conditions). Defined at module level so they are picklable by
+# ProcessPoolExecutor. Each worker builds a FRESH GlycolysisParameterEstimator
+# per task -- the estimator wraps live Pyomo/parmest state (ConcreteModel,
+# Suffix, parmest.Estimator) that cannot be pickled across the process
+# boundary, so only picklable ctor args cross into the worker and only
+# picklable results (dict/float/bool) cross back out.
+# ===========================================================================
+_BOOT_STATE = {}
+
+
+def _pin_single_threaded_linalg():
+    """
+    Force single-threaded BLAS/OpenMP so ipopt's MUMPS solve is reproducible.
+    MUMPS/BLAS multi-threading is not floating-point associative, so the SAME
+    resample can converge to a slightly different point in a shallow/
+    ill-conditioned objective valley depending on how many threads happen to
+    be available in the process that spawns the ipopt subprocess (confirmed
+    empirically: a 22-condition/16-free-param resample drifted 0.3% in obj
+    and ~10% in one parameter between an unpinned sequential call and an
+    unpinned worker process). Pinning to one thread everywhere also avoids
+    CPU oversubscription when n_jobs>1 runs several solves concurrently.
+    """
+    for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                "VECLIB_MAXIMUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        os.environ[var] = "1"
+
+
+def _bootstrap_worker_init(data_dir, theta_init, free_params, fixed_params,
+                            x_bounds, u_bounds, theta_bounds, solver_options):
+    """Process-pool initializer: stash picklable ctor args shared by every task."""
+    _pin_single_threaded_linalg()
+    _BOOT_STATE.update(
+        data_dir=data_dir, theta_init=dict(theta_init),
+        free_params=list(free_params) if free_params is not None else None,
+        fixed_params=list(fixed_params) if fixed_params is not None else None,
+        x_bounds=x_bounds, u_bounds=u_bounds, theta_bounds=theta_bounds,
+        solver_options=dict(solver_options) if solver_options else None,
+    )
+
+
+def _bootstrap_worker_eval(resampled_conditions):
+    """One bootstrap resample: build+fit a fresh estimator, return picklable results only."""
+    st = _BOOT_STATE
+    try:
+        est = GlycolysisParameterEstimator(
+            conditions=resampled_conditions, theta_init=st["theta_init"],
+            free_params=st["free_params"], fixed_params=st["fixed_params"],
+            data_dir=st["data_dir"], x_bounds=st["x_bounds"], u_bounds=st["u_bounds"],
+            theta_bounds=st["theta_bounds"], solver_options=st["solver_options"],
+        )
+        theta = est.estimate()
+        return (dict(theta), float(est.obj_value), True)
+    except Exception:   # noqa: BLE001
+        return (None, None, False)
+
+
+def run_bootstrap_estimation(resamples, theta_init, free_params, fixed_params,
+                              data_dir=DEFAULT_DATA_DIR, x_bounds=None, u_bounds=None,
+                              theta_bounds=None, solver_options=None,
+                              n_jobs=1, verbose=False):
+    """
+    Fit a fresh GlycolysisParameterEstimator independently on each resampled
+    condition list in ``resamples`` (a list of condition-name lists).
+
+    n_jobs=1 (default) runs sequentially in-process -- the existing safe
+    default, unchanged unless the caller opts in. n_jobs>1 (or -1/0/None for
+    os.cpu_count()) fans the resamples out across a ProcessPoolExecutor; each
+    worker builds its own estimator via _bootstrap_worker_init/_eval since the
+    Pyomo/parmest state cannot be pickled. Results preserve ``resamples``
+    order in both paths (ProcessPoolExecutor.map is order-preserving), so the
+    same seed produces numerically identical results regardless of n_jobs.
+
+    Returns a list of (theta_dict, obj_value, converged) tuples, one per
+    resample, in resamples order. On a failed/non-converged resample the
+    entry is (None, None, False).
+    """
+    _pin_single_threaded_linalg()
+    if n_jobs == 1:
+        results = []
+        for conditions in resamples:
+            try:
+                est = GlycolysisParameterEstimator(
+                    conditions=conditions, theta_init=theta_init,
+                    free_params=free_params, fixed_params=fixed_params,
+                    data_dir=data_dir, x_bounds=x_bounds, u_bounds=u_bounds,
+                    theta_bounds=theta_bounds, solver_options=solver_options,
+                )
+                theta = est.estimate()
+                results.append((dict(theta), float(est.obj_value), True))
+            except Exception as exc:   # noqa: BLE001
+                if verbose:
+                    print(f"  resample skipped: {exc}")
+                results.append((None, None, False))
+        return results
+
+    from concurrent.futures import ProcessPoolExecutor
+    workers = (os.cpu_count() or 1) if n_jobs in (-1, 0, None) else int(n_jobs)
+    with ProcessPoolExecutor(
+        max_workers=workers, initializer=_bootstrap_worker_init,
+        initargs=(data_dir, theta_init, free_params, fixed_params,
+                  x_bounds, u_bounds, theta_bounds, solver_options),
+    ) as ex:
+        return list(ex.map(_bootstrap_worker_eval, resamples))
+
+
+# ===========================================================================
 # Estimator: parameter estimation + covariance + sensitivities
 # ===========================================================================
 class GlycolysisParameterEstimator:
@@ -1619,6 +1726,137 @@ class GlycolysisParameterEstimator:
             "likelihood_ratio": LR,
             "thresholds": thresholds,
         }
+
+    def profile_one_point(self, param, value, theta_warmstart=None,
+                          polish_if_worse_than=None, polish_iterations=6,
+                          polish_strategy="rand_guess_and_bound", polish_seed=None):
+        """
+        One grid point of a TRUE (re-optimized) profile likelihood: fix ``param``
+        at ``value``, re-optimize every other currently-free parameter (the
+        nuisance directions), and return the resulting objective.
+
+        This is deliberately NOT the same thing as ``profile_likelihood()`` /
+        ``_profile_grid()`` above, which evaluate the SSE at a fully-specified
+        theta (every other free parameter pinned at theta_hat) without
+        re-optimizing anything -- a coordinate-wise slice, not a profile. Here,
+        nuisance parameters are free to compensate for the profiled parameter's
+        forced value, which is required for a real profile-likelihood CI.
+
+        Reconfiguration safety
+        -----------------------
+        ``_reconfigure`` has a documented trap: passing ``free_params`` alone
+        resets every OTHER (non-listed) parameter to its LITERATURE value, not
+        its currently-held value. For a profile sweep that is wrong and has
+        already caused a real IPOPT "local infeasibility" failure earlier in
+        this project (when Ks_f6p_3/Ks_atp_3 were fixed but a correlated
+        partner's warm start assumed the OLD, non-literature value). To avoid
+        that trap this method ALWAYS calls
+        ``_reconfigure(free_params=<new free list>, fixed_values=<ALL fixed
+        params at their currently-held value, plus param at value>)`` with both
+        arguments given explicitly, never ``free_params`` alone.
+
+        Parameters
+        ----------
+        param : str                    parameter to fix and sweep
+        value : float                  value to fix ``param`` at for this grid point
+        theta_warmstart : dict or None
+            If given, seeds ``self.theta_init`` for the remaining free (nuisance)
+            parameters -- used for continuation warm-starting along a profile arm
+            (each new grid point warm-started from the previous converged point).
+            Falls back to the estimator's currently-held values when not given
+            for a particular parameter.
+        polish_if_worse_than : float or None
+            If given and the single-shot converged objective exceeds this
+            threshold, retry the point with a light multistart (see below)
+            before accepting it. Intended for the sweep driver to flag a grid
+            point that looks like an isolated spike relative to its neighbors
+            on the same arm (the same "single-shot solves can land far short of
+            a better nearby optimum" issue found and fixed in the bootstrap
+            audit) -- reused here rather than re-discovered mid-sweep.
+        polish_iterations : int        multistart restarts for the polish retry
+        polish_strategy : str          multistart strategy for the polish retry
+        polish_seed : int or None      seed forwarded to the polish multistart
+
+        Returns
+        -------
+        (obj_value, theta_dict) : (float, dict or None)
+            ``theta_dict`` holds the full set of currently-free params EXCLUDING
+            ``param`` (the re-optimized nuisance values) -- this is what a caller
+            warm-starts the NEXT grid point from. On failure (ipopt
+            ApplicationError / non-optimal termination / any other exception)
+            returns ``(nan, None)`` rather than raising, so a sweep can keep
+            going past isolated failures.
+
+        Notes
+        -----
+        Restores nothing by itself -- the caller (the profile sweep) is
+        responsible for restoring ``self`` to its original free/fixed
+        configuration once the sweep over ``param`` (or the whole notebook's
+        sweep) is done, exactly as documented in the notebook.
+        """
+        _pin_single_threaded_linalg()
+
+        if param not in ALL_PARAMS:
+            raise ValueError(f"'{param}' is not a recognized parameter.")
+
+        # Snapshot the CURRENT configuration before touching anything, so every
+        # fixed value we pass to _reconfigure is the currently-held value (prior
+        # fitted value or previous sweep's warm start), never literature.
+        #
+        # `param` may currently be free (the common case: the first grid point
+        # of a fresh sweep, called from the estimator's normal N-free baseline)
+        # OR already fixed (every SUBSEQUENT grid point in the SAME arm -- the
+        # previous call already moved `param` out of free_params, since fixing
+        # it and re-optimizing everything else is exactly what this method
+        # does). Either way the correct nuisance set for THIS call is
+        # "self.free_params minus param" -- already true if param is fixed,
+        # and computed directly if param is still free.
+        current_free = list(self.free_params)
+        new_free = [p for p in current_free if p != param]
+        full_theta_now = self._full_theta()   # all 37, current best-known values
+
+        fixed_values = {p: float(full_theta_now[p])
+                        for p in ALL_PARAMS if p not in new_free and p != param}
+        fixed_values[param] = float(value)
+
+        try:
+            self._reconfigure(free_params=new_free, fixed_values=fixed_values)
+            if theta_warmstart:
+                ti = dict(self.theta_init or {})
+                ti.update({p: float(v) for p, v in theta_warmstart.items() if p in new_free})
+                self.theta_init = ti
+                # `_make_estimator()` alone only re-wraps the EXISTING `self.exp_list`
+                # in a fresh `parmest.Estimator` -- it does NOT rebuild the underlying
+                # `GlycolysisExperiment` objects, and each experiment's OWN `theta_init`
+                # (which actually seeds its Pyomo Vars' initial values, see
+                # `GlycolysisExperiment.create_model()`) is frozen at whatever it was
+                # when `_reconfigure()` last called `_build_experiments()` -- BEFORE this
+                # theta_warmstart overlay was applied. Without rebuilding `exp_list` here
+                # too, `theta_warmstart` silently has NO effect on the actual ipopt
+                # starting point (confirmed empirically: two calls differing only in
+                # `theta_warmstart` produced bit-for-bit identical objectives).
+                self.exp_list = self._build_experiments()
+                self.pest = self._make_estimator()
+
+            self.estimate()
+            obj_value = float(self.obj_value)
+            theta_out = {p: float(self.theta[p]) for p in new_free}
+
+            if polish_if_worse_than is not None and obj_value > polish_if_worse_than:
+                try:
+                    story = self.multistart(
+                        iterations=polish_iterations, seed=polish_seed,
+                        strategy=polish_strategy, verbose=False,
+                    )
+                    if story["best_obj"] < obj_value:
+                        obj_value = float(story["best_obj"])
+                        theta_out = {p: float(story["best_theta"][p]) for p in new_free}
+                except Exception:   # noqa: BLE001
+                    pass   # keep the single-shot result if the polish attempt fails
+
+            return obj_value, theta_out
+        except Exception:   # noqa: BLE001
+            return float("nan"), None
 
     # -- reporting ------------------------------------------------------------
     def plot_correlation_heatmap(self, ax=None, threshold=None):

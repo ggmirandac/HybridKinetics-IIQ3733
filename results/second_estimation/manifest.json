@@ -29,20 +29,15 @@
   "n_measured": 14,
   "free_params": [
     "v_max_1",
-    "Ka1_1",
     "Ka2_1",
     "Ka3_1",
     "K_g6p_1",
-    "Kp_f6p_pgi",
+    "Ks_g6p_pgi",
     "kcat_f_2",
     "Ks_f6p_3",
     "Ks_atp_3",
-    "Kp_fbp_3",
-    "Kp_adp_3",
     "kcat_f_3",
     "Ks_fbp_4",
-    "Kp_g3p_4",
-    "Kp_dhap_4",
     "kcat_f_4",
     "kcat_f_5",
     "kcat_f_6",
@@ -50,10 +45,10 @@
     "kcat_f_8",
     "Ks_3pg_8",
     "kcat_f_9",
-    "Ks_pep_9"
+    "Ks_2pg_9"
   ],
-  "n_free_params": 23,
-  "obj_value": 109.38987813753096,
+  "n_free_params": 18,
+  "obj_value": 85.8352984952152,
   "ipopt_available": false,
-  "timestamp": "2026-07-01T00:32:06.828092Z"
+  "timestamp": "2026-07-02T13:25:24.345364Z"
 }

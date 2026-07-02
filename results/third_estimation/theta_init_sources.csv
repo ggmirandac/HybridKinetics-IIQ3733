@@ -1,38 +1,38 @@
 param,value,status,type,source
-v_max_1,3301.7286887684886,free,free,Estimated
-Ka1_1,28.729085536211073,free,free,Estimated
-Ka2_1,30.534482008117234,free,free,Estimated
-Ka3_1,49.43447925696631,free,free,Estimated
-K_g6p_1,49.71409510704751,free,free,Estimated
-Ks_g6p_pgi,1.018,fixed,fixed,Literature
-Kp_f6p_pgi,0.078,fixed,fixed,Literature
-kcat_f_2,5854.523422082647,free,free,Estimated
-Ks_f6p_3,0.7842685004361084,free,free,Estimated
-Ks_atp_3,22.508346564758856,free,free,Estimated
-Kp_fbp_3,0.14,fixed,fixed,Literature
-Kp_adp_3,50.444916706753794,fixed,fixed,Estimated
-kcat_f_3,6197.134343615228,free,free,Estimated
-Ks_fbp_4,63.79967182511203,free,free,Estimated
-Kp_g3p_4,50.77234921060892,fixed,fixed,Estimated
-Kp_dhap_4,50.87729979576813,fixed,fixed,Estimated
-kcat_f_4,2572.703889797393,free,free,Estimated
-kcat_f_5,5524.884015623926,free,free,Estimated
-Ks_dhap_5,1.03,fixed,fixed,Literature
-Kp_g3p_5,0.6341260495962968,fixed,fixed,Estimated
-kcat_f_6,5493.581666669661,free,free,Estimated
-Ks_g3p_6,0.89,fixed,fixed,Literature
-Ks_pi_6,0.53,fixed,fixed,Literature
-Ks_nad_6,0.045,fixed,fixed,Literature
-Kp_pgp_6,0.5494788808501719,fixed,fixed,Estimated
-Kp_nadh_6,0.5116074283387803,fixed,fixed,Estimated
-kcat_f_7,2222.264843660479,free,free,Estimated
-Ks_pgp_7,0.0001950957984638,fixed,fixed,Estimated
-Ks_adp_7,0.0001950957984638,fixed,fixed,Estimated
-Ks_3pg_7,1.2999538843037957,fixed,fixed,Estimated
-Ks_atp_7,1.2665983167167822,fixed,fixed,Estimated
-kcat_f_8,3933.4234865848102,free,free,Estimated
-Ks_3pg_8,16.394098096612037,free,free,Estimated
-Ks_2pg_8,0.19,fixed,fixed,Literature
-kcat_f_9,4237.025203709531,free,free,Estimated
-Ks_2pg_9,0.1,fixed,fixed,Literature
-Ks_pep_9,50.03914313053541,fixed,fixed,Estimated
+v_max_1,80.28524201123827,free,free,Estimated
+Ka1_1,0.0017093158883137,fixed,fixed,Literature (held at 2nd-est value)
+Ka2_1,0.0297154515178516,free,free,Estimated
+Ka3_1,6.467002597238968,free,free,Estimated
+K_g6p_1,11.24250508132913,free,free,Estimated
+Ks_g6p_pgi,6.177563226944908,free,free,Estimated
+Kp_f6p_pgi,10.053133795617752,fixed,fixed,Literature (held at 2nd-est value)
+kcat_f_2,504.70448059948575,free,free,Estimated
+Ks_f6p_3,0.6624396521904556,fixed,fixed,Literature (held at 2nd-est value)
+Ks_atp_3,2.0123188588691208,fixed,fixed,Literature (held at 2nd-est value)
+Kp_fbp_3,9.994058559613192,fixed,fixed,Literature (held at 2nd-est value)
+Kp_adp_3,10.024400588123411,fixed,fixed,Estimated
+kcat_f_3,753.105419453788,free,free,Estimated
+Ks_fbp_4,0.0031357653791114,free,free,Estimated
+Kp_g3p_4,10.068125505743485,fixed,fixed,Estimated
+Kp_dhap_4,10.144934970862984,fixed,fixed,Estimated
+kcat_f_4,3.670839218343539,free,free,Estimated
+kcat_f_5,2052.455390257924,free,free,Estimated
+Ks_dhap_5,0.0012273414187519,fixed,fixed,Literature (held at 2nd-est value)
+Kp_g3p_5,10.797906416294284,fixed,fixed,Estimated
+kcat_f_6,368.0700672820438,free,free,Estimated
+Ks_g3p_6,1.071529795669161,fixed,fixed,Literature (held at 2nd-est value)
+Ks_pi_6,6.862286322538351,fixed,fixed,Literature (held at 2nd-est value)
+Ks_nad_6,0.001017726660131,fixed,fixed,Literature (held at 2nd-est value)
+Kp_pgp_6,9.987748072000874,fixed,fixed,Estimated
+Kp_nadh_6,10.00296694182834,fixed,fixed,Estimated
+kcat_f_7,983.8539930093744,free,free,Estimated
+Ks_pgp_7,0.0014479031109328,fixed,fixed,Estimated
+Ks_adp_7,0.0014479031109329,fixed,fixed,Estimated
+Ks_3pg_7,9.48348841628496,fixed,fixed,Estimated
+Ks_atp_7,9.358753432485184,fixed,fixed,Estimated
+kcat_f_8,694.4787140629461,free,free,Estimated
+Ks_3pg_8,2.6239503455697104,free,free,Estimated
+Ks_2pg_8,9.95022539887144,fixed,fixed,Literature (held at 2nd-est value)
+kcat_f_9,236.8724461890369,free,free,Estimated
+Ks_2pg_9,0.2330358239330593,free,free,Estimated
+Ks_pep_9,7.461119119264586,fixed,fixed,Estimated

@@ -1,7 +1,7 @@
 {
   "method": "multistart",
-  "best_obj": 109.38987813753096,
+  "best_obj": 85.8352984952152,
   "n_converged": 2,
-  "obj_median": 112.85346116716627,
+  "obj_median": 103.52603690869574,
   "frac_within": 0.5
 }
