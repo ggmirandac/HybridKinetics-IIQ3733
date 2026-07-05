@@ -51,6 +51,16 @@ import pyomo.environ as pyo
 from pyomo.contrib.parmest.experiment import Experiment
 import pyomo.contrib.parmest.parmest as parmest
 
+# Ensure the running interpreter's OWN bin dir is on PATH first. When a notebook
+# kernel launches the SaaLab env's python directly (without `conda activate`),
+# the env's bin/ -- which holds the good ipopt 3.14.19 -- is NOT on PATH, so the
+# ~/.idaes/bin appended below (ipopt 3.13.2) would become the only ipopt found.
+# 3.13.2 rejects options like acceptable_iter and makes EVERY solve fail. Prepend
+# sys.executable's dir so the co-located 3.14.19 always wins over idaes's 3.13.2.
+_PY_BIN = os.path.dirname(os.path.abspath(sys.executable))
+if _PY_BIN and _PY_BIN not in os.environ.get("PATH", "").split(os.pathsep):
+    os.environ["PATH"] = _PY_BIN + os.pathsep + os.environ.get("PATH", "")
+
 # `idaes get-extensions` drops k_aug and dot_sens into ~/.idaes/bin, which
 # covariance(method="automatic_differentiation_kaug") needs. We APPEND that dir
 # to PATH (not prepend, and NOT `import idaes`, which prepends) so the SaaLab
@@ -69,7 +79,6 @@ if os.path.isdir(_IDAES_BIN):
             _IDAES_BIN + os.pathsep + _dyld if _dyld else _IDAES_BIN
         )
 
-# Import the authoritative kinetics from the same directory.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from kinetics_noor import EcoliCarbonKinetics, ALL_PARAMS  # noqa: E402
 
@@ -826,7 +835,7 @@ class GlycolysisParameterEstimator:
         self.obj_function = "SSE_weighted" if weighted else "SSE"
         self.theta_init = theta_init
         self.free_imbalanced = free_imbalanced
-        self.solver_options = self.solver_options = solver_options or {
+        self.solver_options = solver_options or {
             "linear_solver": "mumps",                  # Default open-source solver
             "hessian_approximation": "limited-memory", # Crucial for MUMPS speed
             "nlp_scaling_method": "gradient-based",    # Handle biological scale differences
