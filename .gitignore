@@ -255,7 +255,7 @@ pyrightconfig.json
 
 Model/fetch_brenda.py
 
-*.pdf
+results/**/*.pdf
 
 /.claude/*
 .claude/
