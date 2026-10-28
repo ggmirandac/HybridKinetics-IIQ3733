@@ -4,8 +4,8 @@ bootstrap.py -- case bootstrap of the final parameter structure.
 The conditions are resampled with replacement (the conditions are the independent experimental units), every
 resample is fitted warm started at the final point (theta and the primal point of each condition) with the tight
 options, and a failed fit is retried once with a monotone barrier.  The summary gives percentiles, CV, the practical
-identifiability call (97.5/2.5 percentile ratio at most bootstrap_ci_ratio_max, few resamples on a theta bound, the
-interval not spread over most of the theta box) and the objective against the number of KO18 / KO05 copies in the
+identifiability call (not parked at the warm start, 97.5/2.5 percentile ratio at most bootstrap_ci_ratio_max, few
+resamples on a theta bound, the interval not spread over most of the theta box) and the objective against the number of KO18 / KO05 copies in the
 resample: the bootstrap objective is dominated by how often the hardest conditions are drawn.
 
 Position in the pipeline: uncertainty of the final structure (after selection.py and final_analysis.py); writes
@@ -26,6 +26,7 @@ from paths import check_out_dir
 from data import variable_bounds
 from estimation.anchors import check_bounds, read_anchor
 from estimation.parallel import fit_many
+from identifiability.rules import is_protected
 
 def run_bootstrap(anchor_dir, out_dir, params=None, resume=False):
     """
@@ -130,10 +131,17 @@ def summarize(out_dir, state, params):
     for p in free:
         rows.append(parameter_summary(p, converged[p].to_numpy(float), float(state["theta"][p]), params))
     summary = pd.DataFrame(rows).set_index("param")
-    # practically identifiable: a narrow percentile interval that is neither pinned to a theta bound nor spread over
-    # most of the theta box
+    # parked: the warm-started refits never left the anchor, so the narrow interval is no information about the
+    # parameter. These parameters stay free only because the rules protect them (kcat_f_* and the last free
+    # parameter of each rate law, which carry the biology of the reaction), so they are reported as not identifiable
+    distance_to_anchor = (summary["median"] - summary["anchor"]).abs()
+    summary["parked"] = distance_to_anchor <= params["bootstrap_parked_rtol"] * summary["anchor"].abs()
+    summary["kept_free_by_rule"] = [is_protected(p, free) for p in summary.index]
+    # practically identifiable: not parked, and a narrow percentile interval that is neither pinned to a theta bound
+    # nor spread over most of the theta box
     summary["practically_identifiable"] = (
-        (summary["ci_ratio_97.5_over_2.5"] <= params["bootstrap_ci_ratio_max"])
+        ~summary["parked"]
+        & (summary["ci_ratio_97.5_over_2.5"] <= params["bootstrap_ci_ratio_max"])
         & (summary["frac_at_theta_bound"] < params["bootstrap_frac_at_bound_max"])
         & (summary["ci_span_over_bounds_span"] < params["bootstrap_ci_span_max"]))
     summary.to_csv(os.path.join(out_dir, "bootstrap_summary.csv"))
@@ -145,12 +153,13 @@ def summarize(out_dir, state, params):
             "obj_boot_p2.5_p97.5": [float(x) for x in np.percentile(converged["obj"], [2.5, 97.5])]}
     info.update(regression)
     info["n_practically_identifiable"] = int(summary["practically_identifiable"].sum())
+    info["parked"] = list(summary.index[summary["parked"]])
     info["n_free"] = len(free)
     with open(os.path.join(out_dir, "bootstrap_info.json"), "w") as fh:
         json.dump(info, fh, indent=1)
     log("bootstrap summary: %s" % info)
     columns = ["anchor", "median", "p2.5", "p97.5", "cv_percent", "ci_ratio_97.5_over_2.5", "frac_at_theta_bound",
-               "practically_identifiable"]
+               "parked", "practically_identifiable"]
     log("\n" + summary[columns].round(4).to_string())
     return summary, info
 

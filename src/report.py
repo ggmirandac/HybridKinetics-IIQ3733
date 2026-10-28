@@ -212,18 +212,16 @@ def bootstrap_lines(inputs):
                   info["obj_per_KO18_copy"], info["obj_per_KO05_copy"], info["obj_regression_R2"], ko18)]
     lines += [bootstrap_caveat(summary, inputs["profile_summary"])]
     columns = ["anchor", "median", "p2.5", "p97.5", "cv_percent", "ci_ratio_97.5_over_2.5", "frac_at_theta_bound",
-               "practically_identifiable"]
+               "parked", "practically_identifiable"]
     return lines + ["```", summary[columns].round(4).reset_index().to_string(index=False), "```", ""]
 
 def bootstrap_caveat(summary, profile_summary):
     """
     Parameters the data cannot move: a warm-started refit never leaves its start, so the bootstrap median equals the
-    anchor to 7 digits (parking, not information).  Credible = profile identifiable AND bootstrap identifiable.
+    anchor to 7 digits (parking, not information).  The bootstrap summary marks them parked and not practically
+    identifiable.  Credible = profile identifiable AND bootstrap identifiable.
     """
-    parked = []
-    for name in summary.index:
-        if abs(summary.loc[name, "median"] - summary.loc[name, "anchor"]) <= 1e-6 * abs(summary.loc[name, "anchor"]):
-            parked.append(name)
+    parked = list(summary.index[summary["parked"]])
     kcats = [name[len("kcat_f_"):] for name in parked if name.startswith("kcat_f_")]
     parked_names = (["kcat_f_" + "/".join(kcats)] if kcats else []) + [n for n in parked if not n.startswith("kcat_f_")]
     if profile_summary is not None:
@@ -240,8 +238,11 @@ def bootstrap_caveat(summary, profile_summary):
         else:
             partly.append(name)
     caveat = ("Caveat: for parameters the data cannot move%s the bootstrap median equals the warm start to 7 digits: "
-              "the narrow percentile interval reflects parking at the start, not information." % (
-                  " (%s)" % ", ".join(parked_names) if parked else ""))
+              "the narrow percentile interval reflects parking at the start, not information, so they are reported as "
+              "not practically identifiable." % (" (%s)" % ", ".join(parked_names) if parked else ""))
+    if parked:
+        caveat += (" They stay in the free set because the rules always keep them free (kcat_f_* and the last free "
+                   "parameter of each rate law carry the biology of the reaction), not because the data identify them.")
     if credible or partly:
         if credible and partly:
             names = ", ".join(credible) + " (and partly %s)" % ", ".join(partly)

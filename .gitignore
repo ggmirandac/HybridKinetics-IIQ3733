@@ -270,10 +270,15 @@ results/**/sensitivity.pkl
 
 # private folder for local scripts and data
 private/
+
 # Legacy code and legacy results (kept locally, not published)
 legacy/
 results/
 results_v2/
 results_v3/
 runs_v2/
-Data/imbalanced_metabolites_glc_shifted_backup.csv
+
+# Published files that the generic *.md / *.log rules above would hide
+!notebooks/README.md
+!results_v4/**/*.md
+!results_v4/**/*.log

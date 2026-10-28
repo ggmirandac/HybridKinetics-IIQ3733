@@ -14,6 +14,13 @@
  "obj_per_KO18_copy": 6.68449247537319,
  "obj_per_KO05_copy": 1.4276686264765013,
  "obj_regression_R2": 0.4856418033134423,
- "n_practically_identifiable": 6,
+ "n_practically_identifiable": 1,
+ "parked": [
+  "K_g6p_1",
+  "kcat_f_5",
+  "kcat_f_6",
+  "kcat_f_7",
+  "kcat_f_8"
+ ],
  "n_free": 11
 }
