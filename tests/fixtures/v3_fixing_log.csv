@@ -1,0 +1,27 @@
+param,iter,round,stage,rule,partner,group,r,influence_param,influence_partner,value_fixed,svd_loading,trigger,influence_tie_within_25pct
+Ks_atp_3,0,0.0,structural,structural_exact,Ks_f6p_3,Ks_f6p_3;Ks_atp_3,,0.6865369197590427,,0.001971831420041866,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Ks_f6p_3 -1*Ks_atp_3)",True
+Kp_adp_3,0,0.0,structural,structural_exact,Kp_fbp_3,Kp_fbp_3;Kp_adp_3,,0.6863314857397673,,0.0021012334170698796,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Kp_fbp_3 -1*Kp_adp_3)",True
+Kp_g3p_4,0,0.0,structural,structural_exact,Kp_dhap_4,Kp_g3p_4;Kp_dhap_4,,1.6101516715213439e-06,,5.538992856996573,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Kp_g3p_4 -1*Kp_dhap_4)",True
+Ks_g3p_6,0,0.0,structural,structural_exact,Ks_pi_6,Ks_g3p_6;Ks_pi_6;Ks_nad_6,,0.0005977162561645233,,0.005012805942804827,,"sigma_ratio<1e-10 in all 11 runs (dim 2, +1*Ks_g3p_6 -1*Ks_nad_6 | +1*Ks_pi_6 -1*Ks_nad_6)",True
+Ks_nad_6,0,0.0,structural,structural_exact,Ks_pi_6,Ks_g3p_6;Ks_pi_6;Ks_nad_6,,0.0005977151285340508,,0.005012805943160156,,"sigma_ratio<1e-10 in all 11 runs (dim 2, +1*Ks_g3p_6 -1*Ks_nad_6 | +1*Ks_pi_6 -1*Ks_nad_6)",True
+Kp_nadh_6,0,0.0,structural,structural_exact,Kp_pgp_6,Kp_pgp_6;Kp_nadh_6,,5.637181729141754e-07,,2.9960946414079386,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Kp_pgp_6 -1*Kp_nadh_6)",True
+Ks_pgp_7,0,0.0,structural,structural_exact,Ks_adp_7,Ks_pgp_7;Ks_adp_7,,0.002779807541634187,,0.0012410492820117706,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Ks_pgp_7 -1*Ks_adp_7)",True
+Ks_3pg_7,0,0.0,structural,structural_exact,Ks_atp_7,Ks_3pg_7;Ks_atp_7,,1.603779852881895e-05,,3.6544977635002702,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Ks_3pg_7 -1*Ks_atp_7)",True
+Kp_pgp_6,0,1.0,structural,structural_pointdep,,Kp_pgp_6,,2.8753692168543278e-06,,8.180163862135084,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Kp_pgp_6)",False
+v_max_1,0,2.0,structural,structural_output,,v_max_1,,0.001989345835233652,,80.20941566515367,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*v_max_1)",False
+Ka1_1,0,2.0,structural,structural_output,,Ka1_1,,0.000694695344090579,,0.094563720223205,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Ka1_1)",False
+Ka2_1,0,2.0,structural,structural_output,,Ka2_1,,0.00048000975641299094,,0.9754829276045711,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Ka2_1)",False
+Ka3_1,0,2.0,structural,structural_output,,Ka3_1,,0.0007499396805487362,,0.731318052982157,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Ka3_1)",False
+Ks_f6p_3,0,2.0,structural,structural_output,,Ks_f6p_3,,0.6150639719123678,,3.579306072040333,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Ks_f6p_3)",False
+Kp_fbp_3,0,2.0,structural,structural_output,,Kp_fbp_3,,0.6143480038344654,,0.007364405379897688,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Kp_fbp_3)",False
+Kp_g3p_5,0,2.0,structural,structural_output,,Kp_g3p_5,,3.484213272886462e-07,,9.995240744307896,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Kp_g3p_5)",False
+Ks_pi_6,0,2.0,structural,structural_output,,Ks_pi_6,,0.00034942794753159905,,9.970345434486111,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Ks_pi_6)",False
+Ks_adp_7,0,2.0,structural,structural_output,,Ks_adp_7,,0.004340578894713363,,0.045004517254913466,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Ks_adp_7)",False
+Ks_atp_7,0,2.0,structural,structural_output,,Ks_atp_7,,1.628628868020025e-05,,10.091234547040026,,"sigma_ratio<1e-10 in all 11 runs (dim 1, +1*Ks_atp_7)",False
+Kp_dhap_4,1,,practical,svd,,,,2.6671095850423552e-06,,9.994229030691805,-0.9950433467449543,rank_deficient@1e-08,
+Ks_pep_9,2,,practical,svd,,,,0.00011422495440067516,,9.94592190199979,-0.999719689684145,rank_deficient@1e-08,
+Kp_f6p_pgi,3,,practical,svd,,,,5.924643902288481e-05,,10.371589550243645,-0.9954988387800556,rank_deficient@1e-08,
+Ks_2pg_8,4,,practical,svd,,,,2.7021497022305207e-05,,9.987657312192486,0.9999986693245436,rank_deficient@1e-08,
+Ks_dhap_5,5,,practical,svd,,,,0.0008206135291092225,,0.05635425645975939,-0.7369713651399646,rank_deficient@1e-08,
+Ks_3pg_8,6,,practical,corr,kcat_f_8,,0.9629534577763491,0.0032147294036074473,0.006813121624070091,0.09112061085674901,,,
+Ks_2pg_9,7,,practical,flag,,,,0.010204475146107261,,0.0013469735152849404,,fd_unstable,

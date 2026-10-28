@@ -1,0 +1,2 @@
+prefix,description
+kcat_f_,parameters with this prefix are never fixed by the selection (forward kcats)

@@ -1,0 +1,30 @@
+# Environment of the glycolysis identifiability pipeline (src/, notebooks/, tests/).
+#   conda env create -f environment.yml
+#   conda activate hybridkin
+#   python -m ipykernel install --user --name hybridkin      # the notebooks use the "hybridkin" kernel
+#   python tests/test_pipeline.py
+# Built from `conda env export -n hybridkin --from-history` (the packages installed by hand), with the versions of the
+# environment the results were produced with (major.minor pinned) and the two packages that were pip-installed there
+# (sympy, threadpoolctl) added from conda-forge.  IPOPT (conda-forge, 3.14) must win over any older IPOPT on PATH:
+# src/solver.py puts the interpreter's own bin directory first.
+name: hybridkin
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy=2.5
+  - pandas=3.1
+  - scipy=1.18
+  - matplotlib=3.11
+  - sympy=1.14            # symbolic confirmation of the structural null vectors (identifiability/structural.py)
+  - pyomo=6.10            # estimation model + parmest
+  - casadi=3.7            # steady-state / closure solvers and exact Jacobians (model/kinetics.py)
+  - ipopt=3.14            # NLP solver (MUMPS linear solver)
+  - threadpoolctl=3.7     # single-threaded BLAS / OpenMP (src/solver.py; optional, set HK_ALLOW_THREADS=1 to skip)
+  - openpyxl=3.1          # data.ipynb reads the original Excel workbook
+  - jupyter
+  - ipykernel=7.4
+  - nbconvert=7.17        # executing the notebooks from the command line
+  - nbformat=5.11
+# Optional, only for the k_aug covariance cross-check of final_analysis.py (it is skipped when k_aug is missing):
+#   pip install idaes-pse && idaes get-extensions      # puts k_aug and dot_sens into ~/.idaes/bin

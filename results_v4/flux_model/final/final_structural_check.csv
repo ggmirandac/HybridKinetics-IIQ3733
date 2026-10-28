@@ -1,0 +1,41 @@
+,value
+iter,99
+round,final
+n_free,11
+seed,9099
+n_runs,11
+sigma_ratio_anchor,0.0002612232860410293
+sigma_ratio_min_over_runs,9.566505552356575e-05
+sigma_ratio_max_over_runs,0.0036571911110915983
+sigma_2nd_ratio_anchor,0.025757599029295287
+gap_decades_to_next_anchor,1.993893489885236
+gap_decades_to_next_min_over_runs,2.4166859292267975
+n_runs_with_ratio_below_cut,0
+null_count_per_run,0 0 0 0 0 0 0 0 0 0 0
+null_dim_consensus,0
+zero_ratio_max,0.0
+first_nonzero_ratio_min,9.566505552356575e-05
+gap_decades_null,
+null_dim_perturbed_states,0
+sigma_ratio_min_perturbed,5.941453364472016e-05
+n_guarded_rows_max,0
+sv_cut,1e-10
+out_null_dim,4
+out_null_dim_active_set,3
+out_null_dim_generic_states,4
+out_sigma_ratio_anchor,6.3637698384700916e-18
+out_sigma_ratio_min_over_runs,7.792876026764742e-19
+out_n_active_w,13
+out_n_identifiable,7
+out_n_bound_identified,1
+out_n_non_identifiable,3
+out_groups,K_g6p_1[dim1] | kcat_f_3[dim1] | kcat_f_6[dim1] | kcat_f_7[dim1]
+n_groups_flagged,4
+n_exact,0
+n_mixed,0
+n_point_dependent,0
+n_output_level,4
+n_flagged_params,4
+groups,"pts:K_g6p_1[output-level,dim1,exact0] | pfk:kcat_f_3[output-level,dim1,exact0] | gap:kcat_f_6[output-level,dim1,exact0] | pgk:kcat_f_7[output-level,dim1,exact0]"
+n_kept_free_by_rule,4
+kept_free_by_rule,K_g6p_1;kcat_f_3;kcat_f_6;kcat_f_7

@@ -1,0 +1,36 @@
+{
+ "met_all_folds": {
+  "rmse_model": 0.20354048292553586,
+  "rmse_baseline": 0.16585392771908736,
+  "r2_vs_baseline": -0.506087068092069,
+  "n": 103,
+  "n_folds": 22
+ },
+ "met_closure_success_only": {
+  "rmse_model": 0.2197285730744283,
+  "rmse_baseline": 0.17567672182708738,
+  "r2_vs_baseline": -0.5643885664859263,
+  "n": 86,
+  "n_folds": 18
+ },
+ "flux_li_all_folds": {
+  "rmse_model": 1.3763630971277276,
+  "rmse_baseline": 0.7616688041679471,
+  "r2_vs_baseline": -2.265379807164077,
+  "n": 110,
+  "n_folds": 22
+ },
+ "flux_li_closure_success_only": {
+  "rmse_model": 1.4139864825768118,
+  "rmse_baseline": 0.8227624499052256,
+  "r2_vs_baseline": -1.9535313843565496,
+  "n": 90,
+  "n_folds": 18
+ },
+ "fold_status_counts": {
+  "multistart_ok": 8,
+  "above_bound": 8,
+  "anchor_ok": 6
+ },
+ "n_anchor_outside_training_bounds": 11
+}

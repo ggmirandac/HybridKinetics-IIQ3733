@@ -1,0 +1,10 @@
+name,value,type,description
+bootstrap_n,1000,int,number of case-bootstrap resamples (conditions drawn with replacement)
+bootstrap_chunk,100,int,resamples fitted per chunk (a checkpoint is written after every chunk)
+bootstrap_seed,0,int,seed of the resampling
+bootstrap_ci_ratio_max,10.0,float,practically identifiable: 97.5/2.5 percentile ratio at most this
+bootstrap_frac_at_bound_max,0.05,float,practically identifiable: fraction of resamples on a theta bound below this
+bootstrap_ci_span_max,0.5,float,practically identifiable: CI span over the bound span (log10) below this
+profile_half_points,15,int,profile likelihood: steps per arm (an arm has this + 1 points; the anchor is point 0)
+profile_span,0.5,float,profile likelihood: half width in decades around the anchor
+loocv_n_starts,10,int,LOOCV: multistart size of a fold that does not reach the bound

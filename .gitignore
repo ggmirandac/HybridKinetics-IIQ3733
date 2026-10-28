@@ -270,3 +270,10 @@ results/**/sensitivity.pkl
 
 # private folder for local scripts and data
 private/
+# Legacy code and legacy results (kept locally, not published)
+legacy/
+results/
+results_v2/
+results_v3/
+runs_v2/
+Data/imbalanced_metabolites_glc_shifted_backup.csv

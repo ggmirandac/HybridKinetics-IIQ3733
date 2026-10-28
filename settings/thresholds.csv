@@ -1,0 +1,43 @@
+name,value,type,description
+corr_threshold,0.9,float,reduction rule R2: pairs with |r| above this are correlated (only used at full rank)
+zero_cut,1e-06,float,reduction rule R0: parameters with influence below zero_cut * max influence are structurally zero
+eig_cut,1e-08,float,the ONE rank cut: eigenvalue ratio of the FIM (singular ratio 1e-4)
+svd_tie_tol,0.05,float,reduction rule R1: loadings within this fraction of the top loading count as tied (lower influence is fixed)
+svd_min_loading,0.05,float,reduction rule R1: the null vector is ignored if the top fixable loading is below this
+multistart_every,3,int,run a multistart every this many iterations (0 = only at the end of the loop)
+n_starts,15,int,random starts of the multistart inside the reduction loop
+n_starts_stage0,50,int,random starts of the stage 0 multistart (all parameters free)
+max_iter,30,int,maximum number of reduction iterations
+max_structural_rounds,6,int,maximum structural fix-and-refit rounds per iteration
+structural_q,10,int,rate-level structural check: number of random theta realizations
+structural_q_out,5,int,output-level structural check: number of random theta realizations
+seed_base,1000,int,structural check seed = seed_base + iteration (+ 100 * round)
+structural_sv_tol,1e-10,float,structural zero: singular value ratio below this in ALL realizations
+structural_guard_rel,1e-06,float,rate rows below this fraction of the median |v| of the reaction use the absolute sensitivity
+structural_load_min,0.05,float,null group membership: diagonal of the null-space projector above this
+active_rtol,0.0001,float,output-level test: a free variable within this relative distance of a bound counts as active
+rank_rcond,1e-10,float,output-level test: numerical rank cut of the free-variable columns
+sens_step,0.01,float,reduced sensitivities: step h in ln theta
+sens_step_check,0.003,float,reduced sensitivities: step of the column check
+refit_rtol,1e-06,float,refit acceptance: obj_after <= obj_anchor * (1 + refit_rtol) + refit_atol
+refit_atol,1e-09,float,refit acceptance absolute tolerance
+final_accept_lr_fraction,0.5,float,final re-estimate accepted if obj <= anchor + this fraction of the LR threshold
+lr_alpha,0.95,float,confidence level of the likelihood-ratio threshold
+loocv_bound_rtol,1e-06,float,LOOCV fold status anchor_ok if obj_fold <= bound * (1 + loocv_bound_rtol)
+theta_at_bound_tol,0.01,float,a parameter is at a bound if its log distance to the bound is below this
+tie_rtol,0.25,float,reduction rule: influences of a structural null group within this relative distance count as tied (ties are broken by the room to the theta bounds); the output column keeps its historical name influence_tie_within_25pct
+final_seed_base,9000,int,seed of the final structural check = this + iteration index (the others use seed_base + iteration)
+perturb_seed_offset,5000,int,rate-level check: the seed of the perturbed-states variant is the seed of the check plus this offset
+realization_lo,0.5,float,rate-level structural check: theta realizations = anchor * exp(U(ln lo; ln hi)) with this lower factor
+realization_hi,1.5,float,rate-level structural check: upper factor of the theta realizations
+perturb_lo,0.5,float,perturbed-states variant of the rate-level check: states multiplied by exp(U(ln lo; ln hi)) with this lower factor
+perturb_hi,2.0,float,perturbed-states variant of the rate-level check: upper factor
+output_realization_lo,0.5,float,output-level structural check: theta realizations = anchor * exp(U(ln lo; ln hi)) with this lower factor
+output_realization_hi,2.0,float,output-level structural check: upper factor of the theta realizations
+output_perturb_lo,0.5,float,output-level check (generic states variant): states multiplied by exp(U(ln lo; ln hi)) with this lower factor
+output_perturb_hi,2.0,float,output-level check (generic states variant): upper factor
+fd_consistency_rtol,0.1,float,reduced sensitivities: forward / backward differences (and the two steps of the column check) disagree if the difference exceeds this fraction of the larger norm (+ fd_consistency_atol); decides fd_unstable
+fd_consistency_atol,0.001,float,reduced sensitivities: absolute part of the finite-difference consistency test
+multistart_top_n,2,int,multistart candidate: the best this many non-warm starts of the table are re-run in-process and refined
+multistart_max_ratio,1.05,float,multistart candidate: a start whose table objective exceeds this factor times the incumbent objective is skipped
+end_multistart_rtol,1e-06,float,end-of-run multistart of the selection: the candidate counts as an improvement if obj < incumbent - this * |incumbent|

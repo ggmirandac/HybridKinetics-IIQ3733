@@ -1,0 +1,19 @@
+{
+ "n_resamples": 1000,
+ "n_converged": 1000,
+ "n_failed": 0,
+ "frac_failed": 0.0,
+ "n_retried_ok": 10,
+ "obj_anchor": 10.942882817435018,
+ "obj_boot_median": 10.485725630339605,
+ "obj_boot_p2.5_p97.5": [
+  2.927392874374698,
+  23.94069344432162
+ ],
+ "obj_regression_intercept": 2.9609338735081723,
+ "obj_per_KO18_copy": 6.68449247537319,
+ "obj_per_KO05_copy": 1.4276686264765013,
+ "obj_regression_R2": 0.4856418033134423,
+ "n_practically_identifiable": 6,
+ "n_free": 11
+}
