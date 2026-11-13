@@ -1,8 +1,0 @@
-reaction,members,dim,class,exact_dim,null_vectors
-pfk,Ks_f6p_3;Ks_atp_3,1,exact,1,+1*Ks_f6p_3 -1*Ks_atp_3
-pfk,Kp_fbp_3;Kp_adp_3,1,exact,1,+1*Kp_fbp_3 -1*Kp_adp_3
-fba,Kp_g3p_4;Kp_dhap_4,1,exact,1,+1*Kp_g3p_4 -1*Kp_dhap_4
-gap,Ks_g3p_6;Ks_pi_6;Ks_nad_6,2,exact,2,+1*Ks_g3p_6 -1*Ks_nad_6 | +1*Ks_pi_6 -1*Ks_nad_6
-gap,Kp_pgp_6;Kp_nadh_6,1,exact,1,+1*Kp_pgp_6 -1*Kp_nadh_6
-pgk,Ks_pgp_7;Ks_adp_7,1,exact,1,+1*Ks_pgp_7 -1*Ks_adp_7
-pgk,Ks_3pg_7;Ks_atp_7,1,exact,1,+1*Ks_3pg_7 -1*Ks_atp_7

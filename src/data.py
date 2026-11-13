@@ -5,8 +5,7 @@ Reads the CSV files of Data/ (balanced and imbalanced metabolites, fluxes, prote
 measurement standard deviations, and builds the box bounds of the per-condition variables of the estimation problem:
 balanced metabolites x (log-normal box exp(mu +/- n_std sigma)), cofactors u (data range +/- slack, C_pi from the
 literature) and free drains b (data range widened by a fraction of the span).  The rules are read from
-settings/bounds_rules.csv.  ``check_bounds_contain_data`` asserts that the box contains every measured value: with
-n_std = 2 six measured values fell outside it and put a floor under the objective.
+settings/bounds_rules.csv.  ``check_bounds_contain_data`` asserts that the box contains every measured value.
 
 Position in the pipeline: first step; the experiment, the estimator, the selection and the uncertainty steps take
 their data and bounds from here.
@@ -114,8 +113,9 @@ def positive_values(series):
     values = pd.to_numeric(series, errors="coerce").dropna().to_numpy(dtype=float)
     return values[values > 0]
 
-def log_std_range(series, n_std):
+def log_std_range(series):
     """[max(exp(mu - n_std sigma), floor), exp(mu + n_std sigma)] of ln C over the positive values; None if < 2."""
+    n_std = BOUNDS_RULES["n_std"]
     values = positive_values(series)
     if values.size < 2:
         return None
@@ -132,20 +132,17 @@ def data_range(series):
     slack = BOUNDS_RULES["cofactor_slack"]
     return (max(float(values.min()) * (1.0 - slack), BOUNDS_RULES["floor"]), float(values.max()) * (1.0 + slack))
 
-def group_bounds(keys, table, mode, n_std):
+def group_bounds(keys, table, bound_rule):
     """
-    Bounds of one group of metabolites under ``mode`` ('log_std' or 'data_range').  Metabolites without usable data
-    get (floor, largest upper bound of the measured ones in the group).
+    Bounds of one group of metabolites with ``bound_rule`` (log_std_range or data_range).  Metabolites without usable
+    data get (floor, largest upper bound of the measured ones in the group).
     """
     bounds = {}
     measured_upper = []
     for key in keys:
         if key not in table.index:
             continue
-        if mode == "log_std":
-            bound = log_std_range(table.loc[key], n_std)
-        else:
-            bound = data_range(table.loc[key])
+        bound = bound_rule(table.loc[key])
         if bound is not None:
             bounds[key] = bound
             measured_upper.append(bound[1])
@@ -154,20 +151,19 @@ def group_bounds(keys, table, mode, n_std):
         bounds.setdefault(key, (BOUNDS_RULES["floor"], global_max))
     return bounds
 
-def metabolite_bounds(conditions=None, n_std=BOUNDS_RULES["n_std"]):
+def metabolite_bounds(conditions=None):
     """
     (u_bounds, x_bounds) of the cofactors and the balanced metabolites from the data of ``conditions`` (all by
-    default), with the modes of settings/bounds_rules.csv (balanced: log_std, cofactors: data_range).  C_pi is never
-    measured, so here it gets the pooled cofactor fallback; ``variable_bounds`` replaces it by the literature range.
-    ``n_std = 2`` gives the bounds of the v2 runs.
+    default): balanced metabolites log_std_range, cofactors data_range.  C_pi is never measured, so here it gets the
+    pooled cofactor fallback; ``variable_bounds`` replaces it by the physiological range.
     """
     balanced = read_data_csv("balanced_metabolites.csv")
     imbalanced = read_data_csv("imbalanced_metabolites.csv")
     if conditions is not None:
         balanced = balanced[[c for c in balanced.columns if c in set(conditions)]]
         imbalanced = imbalanced[[c for c in imbalanced.columns if c in set(conditions)]]
-    u_bounds = group_bounds(IMBALANCED_KEYS, imbalanced, BOUNDS_RULES["cofactor_mode"], n_std)
-    x_bounds = group_bounds(BALANCED_KEYS, balanced, BOUNDS_RULES["balanced_mode"], n_std)
+    u_bounds = group_bounds(IMBALANCED_KEYS, imbalanced, data_range)
+    x_bounds = group_bounds(BALANCED_KEYS, balanced, log_std_range)
     return u_bounds, x_bounds
 
 def variable_bounds(conditions=None):

@@ -2,7 +2,7 @@
 parameters.py -- the parameters and the structure of the glycolysis model (names only, no numbers to fit).
 
 The 37 kinetic parameters (ALL_PARAMS) in model order, the parameters of every reaction (PARAM_RXN_MAP), the
-reaction order (RXN_ORDER), the metabolite orders (BALANCED_KEYS, BALANCED_NAMES, LEGACY_ROW_ORDER), the
+reaction order (RXN_ORDER), the metabolite orders (BALANCED_KEYS, BALANCED_NAMES, ALPHABETICAL_ROW_ORDER), the
 cofactors, enzymes and flux keys, the literature starting values and the conventions of the measured outputs and the
 free drains (LI_FLUX_KEYS, DUPLICATE_FLUX_GROUPS, FREE_DRAIN_KEYS).  ``reaction_groups()`` returns one parameter
 group per reaction: the selection keeps at least one free parameter in each group, because an equation without a
@@ -13,7 +13,7 @@ takes it from the model package.  Edit this file to change which parameters the 
 """
 
 ALL_PARAMS = [
-    # PTS (empirical formulation -- unchanged)
+    # PTS (empirical formulation)
     "v_max_1",
     "Ka1_1",
     "Ka2_1",
@@ -94,9 +94,9 @@ RXN_ORDER = ["pts", "pgi", "pfk", "fba", "tpi", "gap", "pgk", "gpm", "eno"]
 # Balanced metabolites without the "C_" prefix, in BALANCED_KEYS order (the row order of S and of the drain vector b).
 BALANCED_NAMES = [k[2:] for k in BALANCED_KEYS]
 
-# Alphabetical metabolite order of the original code (the rows of its stoichiometric matrix, and of
+# Alphabetical metabolite order (the row order in which the stoichiometric table is built, and the row order of
 # Data/cellular_needs.csv).  stoichiometry.py writes the table of S in this order and reindexes it to BALANCED_KEYS.
-LEGACY_ROW_ORDER = ["2pg", "3pg", "dhap", "f6p", "fbp", "g3p", "g6p", "pep", "pgp"]
+ALPHABETICAL_ROW_ORDER = ["2pg", "3pg", "dhap", "f6p", "fbp", "g3p", "g6p", "pep", "pgp"]
 
 def reaction_of_parameters():
     """{parameter: reaction} from PARAM_RXN_MAP."""

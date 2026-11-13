@@ -1,29 +1,18 @@
 set,option,value,type,description
-default,print_level,0,int,IPOPT options of every estimation (SOLVER_OPTIONS)
-default,linear_solver,mumps,str,
-default,nlp_scaling_method,gradient-based,str,
+default,print_level,0,int,IPOPT options of every fit
 default,max_iter,8000,int,
-default,acceptable_iter,15,int,
-default,acceptable_tol,1e-05,float,
 default,tol,1e-06,float,
+default,acceptable_tol,1e-05,float,
 default,mu_strategy,adaptive,str,
 default,bound_push,1e-08,float,
 default,bound_frac,1e-08,float,
 default,warm_start_init_point,yes,str,
-tight,warm_start_init_point,yes,str,tight monotone warm start options (TIGHT_OPTIONS): a warm start at a feasible primal point stays in its basin
-tight,mu_strategy,monotone,str,
-tight,mu_init,1e-09,float,
-tight,warm_start_bound_push,1e-09,float,
-tight,warm_start_mult_bound_push,1e-09,float,
-tight,warm_start_bound_frac,1e-09,float,
-retry_monotone,mu_strategy,monotone,str,retry options of a failed bootstrap resample / profile point (merged on top of default)
-retry_monotone,max_iter,15000,int,
-refit_monotone,mu_strategy,monotone,str,third refit attempt after fixing parameters (merged on top of default)
-refit_monotone,max_iter,10000,int,
-casadi,print_level,0,int,IPOPT options of the CasADi closure solve of the held-out predictions (EcoliCarbonKinetics); warm_start_* are dropped there
-casadi,sb,yes,str,
-casadi,mu_strategy,adaptive,str,
-casadi,tol,1e-06,float,
-casadi,warm_start_init_point,yes,str,
-casadi,warm_start_bound_push,1e-06,float,
-casadi,warm_start_mult_bound_push,1e-06,float,
+warm_start,mu_strategy,monotone,str,added to the default options when a fit starts at a previous solution (refits; profiles; bootstrap; LOOCV): IPOPT's warm start keeps the solve in the basin of that solution
+warm_start,mu_init,1e-09,float,
+warm_start,warm_start_bound_push,1e-09,float,
+warm_start,warm_start_mult_bound_push,1e-09,float,
+warm_start,warm_start_bound_frac,1e-09,float,
+closure,print_level,0,int,IPOPT options of the CasADi steady-state solve that predicts a held-out condition (LOOCV)
+closure,sb,yes,str,
+closure,tol,1e-06,float,
+closure,mu_strategy,adaptive,str,

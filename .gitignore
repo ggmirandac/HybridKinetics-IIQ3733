@@ -255,8 +255,6 @@ pyrightconfig.json
 
 Model/fetch_brenda.py
 
-results/**/*.pdf
-
 /.claude/*
 .claude/
 fetch_brenda.py
@@ -271,14 +269,7 @@ results/**/sensitivity.pkl
 # private folder for local scripts and data
 private/
 
-# Legacy code and legacy results (kept locally, not published)
-legacy/
-results/
-results_v2/
-results_v3/
-runs_v2/
-
 # Published files that the generic *.md / *.log rules above would hide
 !notebooks/README.md
-!results_v4/**/*.md
-!results_v4/**/*.log
+!results/**/*.md
+!results/**/*.log

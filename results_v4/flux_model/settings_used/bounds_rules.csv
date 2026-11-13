@@ -1,9 +1,0 @@
-name,value,type,description
-n_std,3.0,float,balanced metabolites: log-normal bound exp(mu +/- n_std * sigma) of ln(C) over the conditions (3 contains all data; 2 excluded six measured values)
-balanced_mode,log_std,str,bound rule of the balanced metabolites (log_std or data_range)
-cofactor_mode,data_range,str,bound rule of the imbalanced metabolites / cofactors (log_std or data_range)
-cofactor_slack,0.1,float,fractional widening of the cofactor data range on each side (data_range mode)
-floor,1e-06,float,strictly positive lower floor of every concentration bound (mM)
-drain_widen,0.1,float,free drains: data min/max widened by this fraction of the span on each side
-pi_lo,1.0,float,C_pi lower bound (mM); Pi is never measured so the literature range is used
-pi_hi,20.0,float,C_pi upper bound (mM)

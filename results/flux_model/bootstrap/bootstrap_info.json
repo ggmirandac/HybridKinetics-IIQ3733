@@ -1,0 +1,26 @@
+{
+ "n_resamples": 5000,
+ "n_converged": 5000,
+ "obj_estimate": 10.908666079114735,
+ "obj_boot_median": 10.289319023318457,
+ "obj_boot_p2.5_p97.5": [
+  2.668551315596303,
+  23.89141108974485
+ ],
+ "practically_identifiable": [
+  "kcat_f_4",
+  "kcat_f_6",
+  "kcat_f_8"
+ ],
+ "n_best_not_from_warm_start": 1468,
+ "best_start_counts": {
+  "warm": 3532,
+  "profile": 1230,
+  "local": 238
+ },
+ "n_near_optimal_fits": 12206,
+ "obj_regression_intercept": 3.533857153794867,
+ "obj_per_KO18_copy": 6.0121008634529,
+ "obj_per_KO05_copy": 1.1376665528088807,
+ "obj_regression_R2": 0.9784475007360601
+}

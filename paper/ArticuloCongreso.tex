@@ -1,0 +1,325 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+\usepackage{cite}
+\usepackage{cuted}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{blkarray}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{orcidlink}
+\usepackage{enumitem}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{svg}
+\usepackage{array}
+\usepackage{makecell}
+\usepackage{ragged2e}
+\setlist[itemize]{noitemsep}
+\usepackage{colortbl}
+\usepackage[american]{babel}
+\usepackage{csquotes}
+\usepackage[style=ieee, backend=biber, doi=false, isbn=false, url=false, eprint=false]{biblatex}% revision: compact references
+
+% \bibliographystyle{ieee}
+\addbibresource{references.bib }
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\usepackage[utf8]{inputenc}
+\usepackage{caption}  % Para mejorar el espaciado de los títulos de tabla
+
+% ---- Supplementary section numbering ----
+\newcommand{\supplementarysection}{%
+  \setcounter{section}{0}% Reset section counter
+  \setcounter{figure}{0}% Reset figure counter
+  \setcounter{table}{0}% Reset table counter
+  \setcounter{equation}{0}% Reset equation counter
+  \renewcommand{\thesection}{S-\Roman{section}}% Sections S-I, S-II, ...
+  \renewcommand{\thefigure}{S\arabic{figure}}% Figures S1, S2, ...
+  \renewcommand{\thetable}{S-\Roman{table}}% Tables S-I, S-II, ...
+  \renewcommand{\theequation}{S\arabic{equation}}% Equations S1, S2, ...
+  \def\theHsection{S.\arabic{section}}% Unique hyperref anchors
+  \def\theHfigure{S.\arabic{figure}}%
+  \def\theHtable{S.\arabic{table}}%
+  \def\theHequation{S.\arabic{equation}}%
+  \section{Supplementary section}% Set supplementary section
+}
+
+% ---- IEEEtran author row-break fix ----
+\makeatletter
+\newcommand{\linebreakand}{%
+  \end{@IEEEauthorhalign}
+  \hfill\mbox{}\par
+  \mbox{}\hfill\begin{@IEEEauthorhalign}
+}
+\makeatother
+
+\begin{document}
+
+\title{
+Building identifiable kinetic structures from steady-state data: A case study from \textit{Escherichia coli} glycolysis
+}
+
+\author{
+\IEEEauthorblockN{1\textsuperscript{st} Gabriel I. Miranda-Contreras}
+\IEEEauthorblockA{\textit{Department of Chemical and Bioprocess Engineering} \\
+\textit{Pontifical Catholic University of Chile}\\
+Santiago, Chile \\
+ggmiranda@uc.cl \orcidlink{0009-0003-9294-8332}}
+\and
+\IEEEauthorblockN{2\textsuperscript{nd} María Trinidad Smith Muñoz}
+\IEEEauthorblockA{\textit{Department of Chemical and Bioprocess Engineering} \\
+\textit{Pontifical Catholic University of Chile}\\
+Santiago, Chile \\
+mt.smith@uc.cl}
+\linebreakand
+\IEEEauthorblockN{3\textsuperscript{rd} Eloy García}
+\IEEEauthorblockA{\textit{Department of Chemical and Bioprocess Engineering} \\
+\textit{Pontifical Catholic University of Chile}\\
+Santiago, Chile \\
+eloy.garcia@uc.cl}
+\and
+\IEEEauthorblockN{4\textsuperscript{th} José R. Pérez-Correa}
+\IEEEauthorblockA{\textit{Department of Chemical and Bioprocess Engineering} \\
+\textit{Pontifical Catholic University of Chile}\\
+Santiago, Chile \\
+jperezc@uc.cl\orcidlink{0000-0002-1278-7782}}
+
+\linebreakand
+\IEEEauthorblockN{5\textsuperscript{th} Pedro Saa}
+\IEEEauthorblockA{\textit{Department of Chemical and Bioprocess Engineering} \\
+\textit{Institute for Mathematical and Computational Engineering}\\
+\textit{Pontifical Catholic University of Chile}\\
+Santiago, Chile \\
+pnsaa@uc.cl
+\orcidlink{0000-0002-1659-9041}}
+}
+
+\maketitle
+% Show page numbers (IEEEtran conference hides them by default)
+\pagestyle{plain}
+\thispagestyle{plain}
+
+\begin{abstract}
+Kinetic models provide a mechanistic framework for studying cellular metabolism, but their large number of parameters, combined with scarce and noisy experimental data, often renders them practically non-identifiable. The challenge is even greater with steady-state data, since different parameter sets can produce similar results.
+This work presents an automated pipeline that reduces the number of free parameters of a kinetic model through structural and practical identifiability analyses. \textcolor{magenta}{As a case study, a model of the central glycolytic pathway of \textit{Escherichia coli}, comprising 9 enzymatic reactions and 16 metabolites, was constructed using the separable thermodynamic rate law of \textcite{noor2013note} and fitted to steady state data from 22 experimental conditions from \textcite{Ishii2007a}.}
+Starting from 37 kinetic parameters, \textcolor{magenta}{singular value decomposition of the flux-sensitivity matrix fixed 8 structurally non-identifiable parameters, and an iterative analysis of the Fisher information matrix (FIM) and parameter correlations fixed 15 more. The resulting model, with 14 free parameters,  fits the training data as well as the full model (flux root-mean-square error of 0.36 versus 0.41) and is locally identifiable.
+However, bootstrapping and profile likelihood analyses agreed on only one parameter as practically identifiable and revealed} multimodal parameter distributions and multiple local minima, conditions that limit gradient-based optimizers. \textcolor{magenta}{In leave-one-out cross-validation, flux error rose to 1.40 and the coefficient of determination became negative for both fluxes and metabolites, indicating limited extrapolation to unseen conditions.  Parameter reduction is therefore necessary but not sufficient: dynamic data and global optimization are needed to obtain predictive kinetic models.}
+\end{abstract}
+
+\begin{IEEEkeywords}
+Identifiability analysis, kinetic models, metabolic modeling, model reduction, sensitivity analysis
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+Metabolic networks transform nutrients into energy and biomass through coordinated biochemical reactions, where a multitude of enzymatic reactions operate simultaneously and share metabolites and cellular resources \cite{Palsson2006Systemsbiologypropertiesreconstructednetworks}. Since metabolic function shapes an organism's phenotype and response to genetic or environmental perturbations \cite{Saa2017}, understanding these networks is central to biotechnology.
+
+Mathematical models enable the identification of rate-limiting steps and the anticipation of perturbation effects without exhaustive experiments \cite{foster-2020}, although strong nonlinearities, tight regulation, and multi-scale interactions of metabolism make constructing such representations challenging \cite{Chassagnole2002}.
+
+Stoichiometric models represent cellular metabolism through the stoichiometric matrix to identify feasible steady-state flux distributions throughout the network \cite{Orth2010a}. Methods such as Flux Balance Analysis (FBA) \textcolor{magenta}{scale to genome size but cannot explain the mechanisms behind metabolic fluxes because reaction rates are not linked to metabolite concentrations, enzyme abundance, or regulation}  \cite{Orth2010a}.
+
+Kinetic models address this gap by incorporating rate laws \textcolor{magenta}{that capture enzyme saturation, reversibility, regulation, and thermodynamic constraints \cite{noor2013note}, predicting not only which flux distributions are feasible but how metabolic states are reached} \cite{Saa2017}. Their construction, however, is limited by parameter identifiability. Rate laws are highly nonlinear, parameter space is large, and data are scarce, so different parameter combinations can reproduce similar behavior \cite{foster-2020}. \textcolor{magenta}{Parameters may be structurally non-identifiable, owing to the model itself, or practically non-identifiable, owing to the quantity and quality of the data \cite{Wieland2021StructuralPracticalIdentifiability}; steady-state data aggravate both, since many parameter sets yield the same steady state.}
+
+This work addresses this problem for the central glycolytic pathway of \textit{Escherichia coli}, the fundamental route that converts glucose into pyruvate and generates ATP, was analyzed. This is among the most extensively studied metabolic pathways, owing to the availability of metabolomic, fluxomic, and enzymatic data \cite{Ishii2007a}. \textcolor{magenta}{ A kinetic model based on the thermodynamic rate law of \textcite{noor2013note} is fitted to steady-state data, and an automated pipeline that combines structural and practical identifiability analyses selects the parameters to fix. The reduced model is then characterized by profile likelihood, bootstrapping, and leave-one-out cross-validation (LOOCV).}
+
+\section{Methodology}
+
+\subsection{Mechanistic kinetic models}
+
+Kinetic models describe the metabolism of a species through a system of ordinary differential equations (ODEs). This system describes the evolution of intracellular metabolites:
+\begin{align}
+    \frac{d\mathbf{x}}{dt}= \mathbf{S} \mathbf{v}(\mathbf{e},\mathbf{x},\mathbf{k}), \quad  \mathbf{x}(0) = \mathbf{x}_0 \label{eqn: balance}
+\end{align}
+where \textbf{S} is the stoichiometric matrix, \textbf{v} is the vector of reaction rates, \textbf{e} is the enzyme concentration vector, \textbf{x} is the vector of metabolite concentrations, and \textbf{k} collects all kinetic parameters \cite{Saa2017}. Under the assumption of quasi-steady-state, i.e., $\mathbf{S} \mathbf{v} \approx \mathbf{0}$, yielding a stationary flux distribution characterizing the metabolic phenotype of the cell \cite{Orth2010a}.
+
+Different mathematical formulations can be used to model the rates given by Eqn.~(\ref{eqn: balance}).
+In particular, the thermodynamic rate law presented by \textcite{noor2013note} is adopted for its simplicity and interpretability. This rate law takes the form:
+\begin{equation}
+    v = V^+ \cdot \kappa \cdot \gamma
+    \label{eqn:noor}
+\end{equation}
+where $V^+\chg{=e\cdot k_{cat}^+}$ denotes an enzyme capacity term, $\kappa$ is the fractional saturation term, and $\gamma$ describes a thermodynamic driving force term. The latter two are defined as:
+\textcolor{magenta}{
+\begin{align}
+    \kappa &= \frac{\prod_{s\in \mathcal{S}} ([s]/K_{S,s})^{\nu_s}}{1 + \prod_{s\in \mathcal{S}} ([s]/K_{S,s})^{\nu_s} + \prod_{p\in\mathcal{P}} ([p]/K_{P,p})^{\nu_p}}
+    \label{eqn:kappa}
+    \\
+    \gamma &= 1 - \frac{1}{K_{eq}'} \frac{\prod_{p\in\mathcal{P}} [p]^{\nu_p}}{\prod_{s\in\mathcal{S}} [s]^{\nu_s}}
+    \label{eqn:gamma}
+\end{align}
+}
+where $e$ is the enzyme concentration, $k^+_{\mathrm{cat}}$ is the forward
+catalytic constant, \textcolor{magenta}{$[s]$ and $[p]$ are, respectively, the concentrations
+of substrate $s$ and product $p$, $K_{S,s}$ and $K_{P,p}$ are their respective
+Michaelis--Menten constants, $\nu_s$ and $\nu_p$ are their stoichiometric
+coefficients in the reaction, $\mathcal{S}$ and $\mathcal{P}$ denote the sets of
+substrates and products of the reaction,} and $K'_{eq}$ is the
+equilibrium constant \cite{noor2013note}.
+
+\subsection{Kinetic model of \textit{E.~coli}'s glycolysis}
+
+The previous mathematical formulation was applied to a kinetic model of the core glycolytic pathway of \textit{E. coli} (Figure~\ref{fig:e.glicolisis}), comprising 9 enzymatic reactions and \textcolor{magenta}{16} metabolites (9 balanced) (Eqn.~\ref{eqn: S matrix}) \cite{Guerra2025CONSTRUCTIONKINETICMODELSMETABOLISMUSINGSYSTEMSINFORMEDPRIORS}.
+
+The model spans glucose uptake through phosphoenolpyruvate formation and was parameterized using data from the EcoCyc \cite{karp2025ecocyc} and eQuilibrator \cite{beber2022equilibrator} databases, as well as the experimental dataset of \textcite{Ishii2007a}.
+
+The data used to fit the model consist of steady-state omics data from \textit{E. coli} K-12. The dataset comprises 24 single-gene deletions and 4 growth conditions at different dilution rates in chemostats. Internal metabolite and enzyme concentrations, together with metabolic flux measurements, are reported in each condition. After a data preprocessing step, the dataset comprised 22 experimental conditions, including 21 mutant strains and 1 wild-type cultivation condition.
+
+Reported parameters are summarized in Table~\ref{tab:glicolisis}. The $K_{eq}'$ values were computed using eQuilibrator's API under cellular conditions (pH = 7, pMg = 3, ionic strength = 0.1 M).
+All reactions are formulated using Eqn.~(\ref{eqn:noor}), with the exception of the phosphotransferase system (PTS), which follows the formulation of \textcite{Kadir2010ModelingsimulationmainmetabolismEscherichiacoliitsseveralsinglegeneknockoutmutantsexperimentalverification} (Eqn.~\ref{eqn: PTS}). The resulting rate equations, along with the notation used throughout, can be found in Section~\ref{sec: kinetic expressions} of the supplementary material.
+
+\subsection{Model reduction methods}
+\subsubsection{\textcolor{magenta}{Steady-state and parameter estimation}}
+\textcolor{magenta}{At steady state, the balanced metabolites satisfy $ \mathbf{S}\mathbf{v}(\mathbf{x}, \mathbf{u}, \mathbf{e};\mathbf{k}) - \mathbf{b} = \mathbf{0}$
+where $\mathbf{x}$ and $\mathbf{u}$ are the balanced and imbalanced metabolite concentrations, $\mathbf{e}$ the enzyme concentrations, and $\mathbf{b}$ the drains that connect the pathway to the rest of metabolism. The parameters are split into free and fixed ones, $\mathbf{k} = \left[\boldsymbol{\theta}; \mathbf{k_f}\right]$, and $\boldsymbol{\theta}$ is estimated by solving:
+\begin{align}
+    &\min_{\{\mathbf{x}_j,\mathbf{u}_j,\mathbf{b}_j\}_{j\in\mathcal{J}},\, \boldsymbol{\theta}}
+    && g(\mathbf{v}, {\mathbf{v}_{\text{exp}}} , \mathbf{x}, {\mathbf{x}_\text{exp}}; \boldsymbol{\theta}) \label{eqn: SS_comp_params}\\
+    &\text{s.t.}
+    &&\left.
+    \begin{aligned}
+        &\mathbf{S}\,\mathbf{v}(\mathbf{x}_j,\mathbf{u}_j,\mathbf{e}_j;\mathbf{k_f},\boldsymbol{\theta})-\mathbf{b}_j=\mathbf{0}\\
+        &\mathbf{x_{lb}}\leq\mathbf{x}_j\leq\mathbf{x_{ub}}\\
+        &\mathbf{u_{lb}}\leq\mathbf{u}_j\leq\mathbf{u_{ub}}\\
+        &\mathbf{b_{lb}}\leq\mathbf{b}_j\leq\mathbf{b_{ub}}\\
+        &\mathbf{x}_j,\mathbf{b}_j\in\mathbb{R}^{n_{eq}},\ \mathbf{u}_j\in\mathbb{R}^{n_{neq}}
+    \end{aligned}
+    \right\}\ \forall j\in\mathcal{J} \nonumber\\
+    & && \boldsymbol{\theta_{lb}}\leq\boldsymbol{\theta}\leq\boldsymbol{\theta_{ub}},\quad \boldsymbol{\theta}\in\mathbb{R}^{n_{\theta}}\nonumber
+\end{align}
+with $g = \frac{1}{2N}\sum_{j\in \mathcal{J}}(\Phi_{v,j}+\Phi_{x,j})$ and
+\begin{align}
+    &\Phi_{v,j} = (\mathbf{v}^{\text{LI}}_{j} -\mathbf{v}^{\text{LI}}_{\text{exp},j})^T\mathbf{Q_v}^{-1} (\mathbf{v}^{\text{LI}}_{j} - \mathbf{v}^{\text{LI}}_{\text{exp},j}) \\
+    &\Phi_{x,j} = (\mathbf{x}_{j} -\mathbf{x}_{\text{exp},j})^T\mathbf{Q_x}^{-1} (\mathbf{x}_{j} - \mathbf{x}_{\text{exp},j})
+\end{align}
+where $N=|\mathcal{J}|=22$ is the number of conditions, $\mathbf{v}_{\text{exp},j}$ and $\mathbf{x}_{\text{exp},j}$ are the measured fluxes and concentrations of condition $j$, and $\mathbf{Q_v}$ and $\mathbf{Q_x}$ are diagonal matrices of replicate variances (20\% of the measured value where no replicate exists). Only g6p, f6p, g3p, 3pg and pep exchange mass with the rest of metabolism; fbp, dhap, pgp and 2pg have no drain ($b=0$), so at steady state $v_{\text{PFK}}=v_{\text{FBA}}=v_{\text{TPI}}$, $v_{\text{GAPDH}}=v_{\text{PGK}}$ and $v_{\text{GPM}}=v_{\text{ENO}}$, as in the measured fluxes. $\Phi_{v,j}$ therefore includes only the five linearly independent (LI) fluxes, $\mathbf{v}^{\text{LI}}_j = [v_{\text{PTS}}, v_{\text{PGI}}, v_{\text{PFK}}, v_{\text{GAPDH}}, v_{\text{GPM}}]_j$, and $\mathbf{Q_v}$ holds their variances. The bounds contain all measurements; they are constructed as the mean $\pm$ three standard deviations of the log-concentrations across conditions for $\mathbf{x}$, the measured range widened by 10\% for $\mathbf{u}$ and $\mathbf{b}$, and 1--20 mM for the unmeasured P$_i$.}
+
+\subsubsection{Parameter identifiability analysis}
+A critical concern in kinetic modeling is the reliability of the estimated parameters.
+The goal is to find a set of parameters that can be uniquely estimated from experimental data, i.e., identifiable. This notion splits into structural and practical identifiability, where the former is a property of the model itself, while the latter depends on the size and quality of the data \cite{Wieland2021StructuralPracticalIdentifiability}.
+\textcolor{magenta}{Based on the analyses bellow, structurally non-identifiable parameters, parameters in directions the data cannot resolve, and the less sensitive member of highly correlated pairs were fixed}, thereby reducing the number of free parameters and improving their identifiability.
+
+\paragraph{\textcolor{magenta}{Structural identifiability analysis}}
+\textcolor{magenta}{Structural identifiability is assessed with the method of \textcite{stigter2015fast}. For $q$ parameter vectors $\boldsymbol{\theta}^{(l)}$ drawn log-uniformly within the bounds, the scaled sensitivity of flux $i$ to $\theta_m$ at the estimated states of each condition $j$ is:
+\begin{align}
+    R_{(j,i),m}^{(l)} = \left.\frac{\theta_m^{(l)}}{\widetilde{v}_{i}}\frac{\partial v_i}{\partial \theta_m}\right\vert_{\mathbf{x}_j, \mathbf{u}_j, \mathbf{e}_j, \boldsymbol{\theta}^{(l)}}
+    \label{eqn: R}
+\end{align}
+where $\widetilde{v}_{i}$ is the median absolute flux of reaction $i$. Stacking over conditions, reactions and draws gives $\mathbf{R}$, with singular value decomposition (SVD) $
+\mathbf{R} = \mathbf{U}\boldsymbol{\Sigma}\mathbf{V}^T = \sum_{k=1}^{n_\theta} \sigma_k \mathbf{u}_k \mathbf{v}_k^T$.
+A singular value with $\sigma_k/\sigma_1 < \epsilon_1$ is a structural zero: its vector $\mathbf{v}_k$ is a parameter combination that leaves every flux, and hence the steady state, unchanged, so no data from these conditions can resolve it. As the draws are random, such a zero reflects the model rather than a particular estimate. For each structural zero, the parameter with the largest loading $|v_{k,m}|$ is fixed, until $\mathbf{R}$ has full rank ($q = 10$, $\epsilon_1 = 10^{-10}$).}
+
+\paragraph{\textcolor{magenta}{Practical identifiability analysis}}
+\textcolor{magenta}{The measured outputs of condition $j$ are $\mathbf{y}_j=[\mathbf{v}^{\text{LI}}_j;\mathbf{x}_j]$. Since the states $\mathbf{w}_j=[\mathbf{x}_j;\mathbf{u}_j;\mathbf{b}_j]$ are also estimated (Eqn.~\ref{eqn: SS_comp_params}), a change in $\boldsymbol{\theta}$ is partly compensated by $\mathbf{w}_j$, and the sensitivities account for it: $d\mathbf{x}_j/d\boldsymbol{\theta} = \partial \mathbf{x}_j/\partial \boldsymbol{\theta}$ and $d\mathbf{v}_j/d\boldsymbol{\theta} = (\partial \mathbf{v}/\partial \mathbf{w})(\partial \mathbf{w}_j/\partial \boldsymbol{\theta}) + \partial \mathbf{v}/\partial \boldsymbol{\theta}|_{\mathbf{w}_j}$,
+where $\partial\mathbf{w}_j/\partial\boldsymbol{\theta}$ follows from the implicit function theorem applied to the optimality conditions of the fit of condition $j$, with exact derivatives from automatic differentiation \cite{Andersson2019CasADisoftwareframeworknonlinearoptimizationoptimalcontrol}. Both blocks form $\mathbf{G}_j = d\mathbf{y}_j/d\boldsymbol{\theta}$, and the FIM of the log-parameters is:
+\begin{align}
+    \mathbf{F} = \mathbf{D}\left(\sum_{j=1}^{N} \mathbf{G}^T_j\mathbf{Q}^{-1}\mathbf{G}_j\right)\mathbf{D}, \qquad \mathbf{D}=\mathrm{diag}(\boldsymbol{\theta})
+    \label{eqn: FIM}
+\end{align}
+where $\mathbf{D}$ makes the analysis independent of parameter units. Since the covariance and correlations require a full-rank $\mathbf{F}$, the rank is checked first. $\mathbf{F}$ is rank deficient if $\lambda_{\min}/\lambda_{\max}<\epsilon_2$, and the eigenvector $\mathbf{v}_{\min}$ of $\lambda_{\min}$ is then a parameter combination, possibly of more than two parameters, that the data cannot resolve ($\epsilon_2 = 10^{-8}$). Otherwise, the covariance and correlations are 
+$\mathbf{\Sigma} = \mathbf{F}^{-1}$ and $r_{mn} = \Sigma_{mn}/\sqrt{\Sigma_{mm}\Sigma_{nn}}
+    $\cite{Sanchez2014HIPPOIterativeReparametrization},
+and pairs with $|r_{mn}|>0.9$ are considered highly correlated. Finally, the sensitivity of the outputs to each parameter is the mean absolute relative sensitivity over the $n_y$ measured outputs, $s_m = \frac{1}{n_y}\sum_{j=1}^{N}\sum_{i}\left|\frac{\theta_m}{y_{j,i}}\frac{\partial y_{j,i}}{\partial \theta_m}\right|$.}
+
+\subsubsection{\textcolor{magenta}{Automatic parameter selection}}
+\textcolor{magenta}{To avoid subjective choices, the parameters to fix are selected automatically. The forward catalytic constants $k^+_{cat}$, which with the measured enzyme levels set the capacity of each reaction, are never fixed, and every rate law keeps at least one free parameter (protected parameters).
+Starting from the fit with all 37 parameters free, the structural analysis fixes parameters until $\mathbf{R}$ has no structural zeros, then the model is refitted.
+The practical analysis is then iterated, with one decision per iteration:
+(i) if $\mathbf{F}$ is rank deficient, the parameter with the largest loading in $\mathbf{v}_{\min}$ is fixed;
+(ii) otherwise, the less sensitive (lower $s_m$) member of the most correlated pair with $|r_{mn}|>0.9$ is fixed;
+(iii) otherwise, the selection stops.
+Each parameter is fixed at its current estimate and the model is refitted from the previous solution, accepting the refit only if $g$ does not increase. A protected parameter selected by a rule remains free, but is reported as non-identifiable and excluded from later criteria.}
+
+\subsection{Model characterization}
+
+After the model reduction, the parameters and the model performance were characterized. Various methodologies can be applied to this task; in particular, profile likelihood, bootstrapping, and leave-one-out cross-validation (LOOCV) were used.
+
+\subsubsection{Profile likelihood}
+The impact of a parameter $\textcolor{magenta}{\theta_m}$ on the model fit can be quantified through its profile likelihood, $g_{profile}(\theta_m) = \min_{\boldsymbol{\theta}_{-m}} g(\mathbf{v}, \mathbf{v}_{\text{exp}}, \mathbf{x}, \mathbf{x}_{\text{exp}}; \theta_m, \boldsymbol{\theta}_{-m})$, where $\textcolor{magenta}{\boldsymbol{\theta}_{-m}}$ is the set of parameters excluding $\textcolor{magenta}{\theta_m}$ \cite{Wieland2021StructuralPracticalIdentifiability}.\textcolor{magenta}{ Since $g$ is scaled by $1/(2N)$, the 95\% likelihood-ratio threshold is $\Delta=\chi^2_{1,0.95}/(2N)$. Profiles were evaluated from $\hat{\theta}_m/10$ to $10\,\hat{\theta}_m$ within the parameter bounds, with 30 logarithmically spaced points on each side, each re-optimized as detailed in Figure~\ref{fig:proflike}. A side of the profile is bounded if the profile exceeds $\Delta$ there and stays above it farther out. A parameter is identifiable if both sides are bounded, giving a finite confidence interval; one-sided if only one is, so that the data constrain it from that side and further data are needed to bound the other; and flat if neither is, i.e., the data do not constrain it within the scanned range, as structural zeros were removed beforehand.}
+
+
+\subsubsection{Empirical parameter uncertainty quantification (bootstrapping)}
+The covariance matrix $\mathbf{\Sigma}$ is a local approximation of the parameter uncertainty. The empirical parameter uncertainty was instead constructed via the bootstrapping procedure described in \textcite{Justus2024BootstrapConfidenceIntervals}.\textcolor{magenta}{The $N$ conditions were resampled with replacement and each of $B = 5000$ resamples was fitted from several starts (Figure~\ref{fig:boostrapdist}); the best fit of each resample was kept. A parameter is considered practically identifiable if the ratio of the 97.5 and 2.5 percentiles of its distribution is at most 10 and its 95\% interval does not reach a parameter bound.}
+
+
+\subsubsection{LOOCV}
+\textcolor{magenta}{For each condition $h$, the parameters are estimated on the other $N-1$ conditions, with bounds recomputed from them. As the drains and cofactors of $h$ are unknown, its steady state is not unique, so it is predicted from the measured enzyme levels $\mathbf{e}_h$ as the steady state closest to a reference:
+\begin{align}
+    \min_{\mathbf{x},\,\mathbf{u}} \|\ln\mathbf{u}-\ln\mathbf{u}_{\text{ref}}\|_2^2 + \varepsilon\,\|\ln\mathbf{x}-\ln\mathbf{x}_{\text{ref}}\|_2^2 \label{eqn: loocv}
+\end{align}
+subject to $\mathbf{S}\,\mathbf{v}(\mathbf{x},\mathbf{u},\mathbf{e}_h;\mathbf{k}) - \boldsymbol{\alpha}\,v_{\text{PTS}} = \mathbf{0}$ and the bounds of $\mathbf{x}$ and $\mathbf{u}$, where $\mathbf{u}_{\text{ref}}$ and $\mathbf{x}_{\text{ref}}$ are the geometric means of the fitted training states, $\varepsilon = 10^{-4}$, and each drain is a fraction $\alpha_i$ of the glucose uptake $v_{\text{PTS}}$, through which all drained carbon enters, with $\alpha_i$ the training mean of $b_{j,i}/v_{\text{PTS},j}$.}
+
+
+\subsection{Computational implementation} 
+
+The model was implemented in \texttt{Python} 3.12; the code and supplementary information are available at \href{https://github.com/ggmirandac/HybridKinetics-IIQ3733}{https://github.com/ggmirandac/HybridKinetics-IIQ3733}. Eqn.~\ref{eqn: SS_comp_params} was solved with the Interior Point OPTimizer (IPOPT) \cite{wachter2006implementation} through the \texttt{parmest} module of Pyomo \cite{Bynum2021PyomooptimizationModelingPython}, from 50 starting points drawn log-uniformly within the parameter bounds plus the literature values.
+
+\section{Results and Discussion}
+\begin{figure*}[t]
+    \centering
+\includegraphics[width=0.8\linewidth]{MainTextFigures/fig1_conference.pdf}
+    \caption{\textbf{General workflow for building a reduced kinetic model structure}. The model reduction procedure consisted of the sequential fixation of parameters. The values of the fixed parameters were chosen to match the estimated values in the previous step. The model performance metrics, root mean squared error (RMSE) and coefficient of determination ($R^2$), are presented in the rounded squares, while the methods and metrics computed for each model are given in the hexagonal boxes.}
+    \label{fig:reduction}
+\end{figure*}
+
+
+\begin{figure*}[th!]
+    \centering
+\includegraphics[width=1\linewidth]{MainTextFigures/fig2_conference.pdf}
+    \caption{\textcolor{magenta}{\textbf{Reduced model characterization.} \textbf{a)} Mean relative sensitivity $|\partial \ln y/\partial \ln \theta|$ of the measured metabolite concentrations ($x$) and LI fluxes ($v$, each row standing for a group of equal fluxes) to the 14 free parameters, grouped by reaction (colored header); values below $10^{-4}$ share the darkest color. \textbf{b)} Value of each free parameter in the literature model, after the initial estimation (all 37 parameters free), after the structural phase and in the final model; each group of bars is scaled to its largest value. \textbf{c)--d)} Parity of the LI fluxes and of the metabolite concentrations for the literature model, the final model and LOOCV, with RMSE and $R^2$ against the per-output mean; the legends also list the metrics of the initial estimation with all 37 parameters free, whose predictions lie on those of the final model (Figure~\ref{fig:paritylitfinal}). \textbf{e)} Profile likelihood of an identifiable ($k^4_{cat}$), a one-sided ($v^1_{max}$, whose upper side ends at its parameter bound) and a non-identifiable parameter ($K^7_{s,adp}$), relative to the best objective found, with the 95\% threshold $\Delta$ (dashed); all profiles in Figure~\ref{fig:proflike}. \textbf{f)} Bootstrap distributions ({$B=5000$}) of the same three parameters on a common axis, each scaled to its peak, with the estimate (solid line) and the 95\% percentile interval (shaded); all distributions in Figure~\ref{fig:boostrapdist}.}}
+    \label{fig:main}
+\end{figure*}
+
+\subsection{Systematic parameter reduction}
+ \textcolor{magenta}{Model reduction was executed following a two-phase, sensitivity- and FIM-based algorithmic pipeline designed to eliminate parameter redundancy while preserving model predictive capacity.}
+
+ 
+\paragraph{Starting points \textcolor{magenta}{and baseline estimation}}
+\textcolor{magenta}{As shown in Figure~\ref{fig:reduction}, fixing all 37 kinetic parameters to literature values failed to describe the biological system. In contrast, simultaneously estimating all 37 parameters against the 22 steady-state conditions from \textcite{Ishii2007a} improve the predictive power of the model yileding an objective  $g= 11.745$ (Figure~\ref{fig:paritylitfinal}). Calibration improved fluxes far more than metabolite pool predictions, reflecting the tight stoichiometry governing reaction rates relative to internal pool sizes.}
+\textcolor{magenta}{\paragraph{Structural identifiability phase}
+Eight structural zeros of the flux-sensitivity matrix were fixed by applying the method previously defined (Eqn.~\ref{eqn: R}), reducing the free parameters from 37 to 29 and the objective to $g=10.909$ (Figure~\ref{fig:selection_path}a, Figure~\ref{fig:final_identifiability}a). Because the 29-parameter model is nested in the 37-parameter one, a lower objective implies that the initial full fit had not reached the global minimum, an early sign of non-convexity.}
+{\paragraph{Practical identifiability phase}
+\textcolor{magenta}{Sensitivity analysis across the 6 measured metabolites and 5 LI fluxes reveals a distinct structural asymmetry (Figure~\ref{fig:main}a). Fluxes and metabolite pools exhibit near-zero sensitivity to saturation constants ($K_s$), remaining governed by three catalytic capacities ($k^3_{cat}$, $k^4_{cat}$ and $k^9_{cat}$, up to 0.5), while the other 11 free parameters stay below 0.04.The fitted catalytic constants depart strongly from literature values (Fig.~\ref{fig:main}b), probably because they originate from different operating conditions.}
+\subsection{Reduced model characterization \textcolor{magenta}{and diagnostics}}
+
+\textcolor{magenta}{Following the model reduction, the 14-free-parameter model was characterized to diagnose local optimization landscapes and parameter uncertainty.}
+
+\paragraph{\textcolor{magenta}{Parameter sensitivity}}
+\textcolor{magenta}{Sensitivity analysis across the 9 balanced metabolites and 9 reactions reveals a distinct structural asymmetry (Figure~\ref{fig:main}a). Fluxes exhibit near-zero sensitivity to saturation constants ($K_s$), remaining governed by catalytic capacities ($k_{\text{cat}}^+$). Conversely, metabolite pools ($x_{\text{g6p}}, x_{\text{fbp}}, x_{\text{pep}}$) display high relative sensitivity to all free parameters. The fitted catalytic constants depart strongly from literature values (Fig.~\ref{fig:main}b), probably because they originate from different operating conditions.}
+%Parameter trajectories across stages (Figure~\ref{fig:main}b, Figure~\ref{fig:fixed evol}) demonstrate high numerical stability: key catalytic constants ($k^{2}_{cat}$, $k^{3}_{cat}$, $k^{5}_{cat}$, $k^{8}_{cat}$) adjusted significantly from literature values to match experimental flux magnitudes, remaining stable through the structural and practical phases.
+
+\paragraph{\textcolor{magenta}{Out-of-sample predictive performance}}
+
+\textcolor{magenta}{LOOCV flux predictions ($\text{RMSE}_{flux}=1.404$) are better than those of the unfitted literature model (3.743) but worse than the training fit (0.359), and $R^2_{flux}$ drops to $-2.73$ (Fig.~\ref{fig:main}c), which is attributed to the unmeasured metabolic drains $\mathbf{b}_j$ of the held-out single-gene deletion mutants. Metabolite predictions are only slightly better than the literature model ($\text{RMSE}_{met}=0.206$ vs.\ 0.228; $R^2_{met}=-0.71$ vs.\ $-1.10$; Fig.~\ref{fig:main}d).Both negative values mean that out-of-sample predictions do not beat the per-output mean. For metabolites this reflects a property of steady-state models: many sets of internal concentrations $\mathbf{x}$ satisfy $\mathbf{S}\mathbf{v}(\mathbf{x},\mathbf{u},\mathbf{e};\mathbf{k})-\mathbf{b}=\mathbf{0}$ for identical flux profiles, so pool sizes remain underdetermined without dynamic data, and the held-out steady state must be selected through Eq.~\ref{eqn: loocv}.}
+
+
+\textcolor{magenta}{Bootstrapping ($B=5000$ resamples), which does not rely on a local linearization, classified 3 of 14 parameters as practically identifiable (Figure~\ref{fig:main}e--f, Figures~\ref{fig:boostrapdist}--\ref{fig:proflike}, Table~\ref{tab:free_parameters}).  Capacity parameters such as $k_{cat}^{4}$ yield narrow unimodal distributions, while saturation constants like $K_{s,adp}^7$ display multimodal distributions spanning more than two orders of magnitude. The catalytic constants $k^5_{cat}$, $k^6_{cat}$ and $k^7_{cat}$ are also bimodal, but within a factor below 2: 16\% of the resamples stay at the estimate and 56\% move jointly to a second local minimum 0.07--0.09 decades lower. The percentile criterion measures only the width of the distribution, so $k^6_{cat}$ passes it even though its profile stays below $\Delta$ on one side over a whole decade. Profile likelihood identified only $k^{4}_{cat}$ and $k^{9}_{cat}$ (both arms cross $\Delta$), with eight one-sided and four flat profiles. For seven one-sided parameters (all but $k^6_{cat}$) the estimate lies within 0.2 decades of a parameter bound. Only $k^{4}_{cat}$ is identifiable under both analyses, so local identifiability does not imply practical identifiability. The jagged profile trajectories expose the local character of IPOPT, which converges to different local minima for nearby parameter values depending on initialization.}
+\textcolor{magenta}{\paragraph{Limitations.} Three factors likely explain this persistent non-identifiability. First, the dataset is small relative to the model: 37 parameters against 22 conditions, each with 5 linearly independent fluxes and 6 measured metabolites. Second, the rate law omits regulatory mechanisms that could describe metabolite pools better, although adding them would add parameters and worsen the first problem. Third, local optimizers are unreliable on this multimodal landscape, even with 50 multi-start initializations.}
+
+\section{Conclusion}
+
+\textcolor{magenta}{This work presented an automated pipeline that combines structural and practical identifiability analyses to reduce the free parameters of a kinetic model, applied to the central glycolytic pathway of \textit{E. coli}. This demonstrates that systematic sensitivity and FIM-based model reduction can effectively compress a model down from 37 to 14 free parameters and maintain a training fit equivalent to that of the full model.}
+
+The final model retained some predictive capability outside the training data (Figure~\ref{fig:main}c--d), but its gain over the literature model is smaller for metabolites than for fluxes. One reason behind this is the multiplicity of solutions to Eqn.~\ref{eqn: balance}.
+\textcolor{magenta}{Furthermore, bootstrapping and profile likelihood analyses revealed severe non-convexity, multimodal parameter distributions, and local minima traps that limit local gradient-based optimizers like IPOPT. Out of sample, predictions degraded markedly ($R^2<0$ for fluxes and metabolites). Parameter reduction is thus necessary but not sufficient, suggesting the need for more data or a change in formulation.}
+
+
+Acknowledging the limitations of this study, this work lays the groundwork for future efforts in kinetic modeling. Future work should compare the model with baseline techniques such as Flux Balance Analysis, use dynamic data simulations to indicate whether dynamic data must be measured to obtain an identifiable model, and employ global optimization to tackle the multiple local optima; an identifiable reduced model would then enable integration with hybrid modeling and Bayesian parameter estimation.
+
+
+
+%\newpage
+
+
+
+\section{Acknowledgment}
+GIMC and PS acknowledge the financial support from ANID FONDECYT Regular No. 1262500, and from the National Center for Artificial Intelligence CENIA FB210017, Basal ANID.
+
+\printbibliography[title={\section{References}}]
+% \input{supplementary}
+
+\input{supplementary}
+\end{document}

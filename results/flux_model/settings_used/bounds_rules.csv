@@ -1,0 +1,7 @@
+name,value,type,description
+n_std,3.0,float,balanced metabolites: bounds exp(mu +/- n_std * sigma) of ln C over the conditions (3 contains every measured value)
+cofactor_slack,0.1,float,cofactors: measured range widened by this fraction on each side
+drain_widen,0.1,float,free drains: measured range widened by this fraction of its span on each side
+floor,1e-06,float,smallest lower bound of a concentration (mM)
+pi_lo,1.0,float,lower bound of C_pi (mM); Pi is not measured so a physiological range is used
+pi_hi,20.0,float,upper bound of C_pi (mM)

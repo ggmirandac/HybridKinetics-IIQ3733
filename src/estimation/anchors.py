@@ -4,7 +4,7 @@ anchors.py -- building, saving and restoring the anchored estimators (the fitted
 ``make_est`` builds the estimator of the pipeline (data-derived bounds of settings/bounds_rules.csv, theta bounds of
 settings/theta_bounds.csv, IPOPT options of settings/solver_options.csv); ``save_anchor`` writes anchor_state.pkl
 (theta, free set, x, u, b, objective) and theta_full.csv; ``load_point`` rebuilds an anchor-only estimator at a saved
-point WITHOUT a solve; ``restore_anchor`` re-solves from the saved point with the tight warm start.
+point WITHOUT a solve; ``restore_anchor`` re-solves from the saved point with the warm-start options.
 ``check_bounds`` asserts that the bounds contain every measured value (called at the start of every run).
 
 Position in the pipeline: shared by stage 0, the selection, the final analysis, bootstrap, profiles and LOOCV.
@@ -14,7 +14,7 @@ import pickle
 
 import pandas as pd
 
-from settings import SOLVER_OPTIONS, TIGHT_OPTIONS
+from settings import SOLVER_OPTIONS, WARM_START_OPTIONS
 from progress import log
 from model.parameters import ALL_PARAMS
 from data import variable_bounds, check_bounds_contain_data
@@ -67,16 +67,15 @@ def load_point(state):
 
 def restore_anchor(anchor_dir):
     """
-    Re-solve the anchor of ``anchor_dir/anchor_state.pkl`` from its theta and primal point with the tight warm start,
-    then ``refine_anchor``.  Returns (estimator, saved state).
+    Re-solve the anchor of ``anchor_dir/anchor_state.pkl`` from its theta and primal point with the warm-start
+    options, then ``refine_anchor``.  Returns (estimator, saved state).
     """
     state = read_anchor(anchor_dir)
-    tight = {**SOLVER_OPTIONS, **TIGHT_OPTIONS}
-    est = make_est(state["conditions"], state["theta"], state["free"], solver_options=tight, x_init=state["x_init"],
-                   u_init=state["u_init"], b_init=state["b_init"])
+    est = make_est(state["conditions"], state["theta"], state["free"], solver_options=WARM_START_OPTIONS,
+                   x_init=state["x_init"], u_init=state["u_init"], b_init=state["b_init"])
     est.estimate()
     obj_start = float(est.obj_value)
-    est.refine_anchor(primary_options=dict(TIGHT_OPTIONS))
+    est.refine_anchor()
     est.solver_options = dict(SOLVER_OPTIONS)
     log("anchor restored: obj %.6f (first warm-start solve %.6f, saved %.6f)" % (est.obj_value, obj_start,
                                                                                   state["obj"]))

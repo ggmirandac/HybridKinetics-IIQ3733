@@ -76,8 +76,8 @@ def b_vs_data(est):
     table["at_bound"] = ((table["b_fit"] - table["lo"]) < 1e-4 * span) | ((table["hi"] - table["b_fit"]) < 1e-4 * span)
     return table
 
-def theta_at_bounds(est, tol):
-    """Free parameters within a log distance ``tol`` of a theta bound."""
+def theta_at_bounds(est, tol=0.01):
+    """Free parameters within a log distance ``tol`` (1%) of a theta bound."""
     names = []
     full = est.full_theta()
     for p in est.free_params:

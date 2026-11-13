@@ -12,11 +12,10 @@ kinetic parameters) is shared by all scenarios (parmest's ``unknown_parameters``
 builds the scenarios (estimation/experiment.py), solves the extensive form with IPOPT (``estimate``), re-optimizes
 at the fit until it is a fixed point of the optimizer (``refine_anchor``), exposes the fitted primal point
 (x, u, b), predicts in sample and for a held-out condition, decomposes the objective per condition
-(``objective_breakdown``) and gives the k_aug covariance.
+(``objective_breakdown``).
 
 Position in the pipeline: the core object of every later step (selection, refits, bootstrap, profiles, LOOCV).
-Written against the parmest API of Pyomo 6.10 (Experiment-based interface, ``obj_function='SSE_weighted'``,
-``cov_est``).
+Written against the parmest API of Pyomo 6.10 (Experiment-based interface, ``obj_function='SSE_weighted'``).
 """
 from dataclasses import dataclass
 
@@ -26,7 +25,7 @@ import pandas as pd
 import pyomo.environ as pyo
 import pyomo.contrib.parmest.parmest as parmest
 
-from settings import THETA_BOUNDS, TIGHT_OPTIONS, SOLVER_OPTIONS
+from settings import THETA_BOUNDS, WARM_START_OPTIONS, SOLVER_OPTIONS
 from solver import check_solver
 from model.kinetics import EcoliCarbonKinetics
 from model.parameters import (ALL_PARAMS, LITERATURE_THETA, FREE_DRAIN_KEYS, BALANCED_KEYS, IMBALANCED_KEYS,
@@ -134,13 +133,9 @@ class GlycolysisParameterEstimator:
         self.pest = self.build_parmest()
         self.obj_value = None
         self.theta = None
-        self.cov = None
-        self.cov_psd = None
         # (x_init, u_init, b_init) of an anchor-only estimator (see anchor_only)
         self.anchor_primal = None
         self.kinetics = None
-        # how the parameter selection obtained this point ("" for a plain fit; see estimation/refit.py)
-        self.refit_status = ""
 
     def build_experiments(self):
         experiments = []
@@ -185,7 +180,7 @@ class GlycolysisParameterEstimator:
         Turn this unsolved estimator into an ANCHOR-ONLY one: it represents the fitted point (theta, x, u, b) with
         objective ``obj_value`` without solving the extensive form.  A warm-started IPOPT solve from an anchor drifts
         by about 0.3% in the flat valley because the duals are unknown, so saved points are used as they are.
-        The primal accessors read the stored point; ``covariance`` is not available.  Returns self.
+        The primal accessors read the stored point.  Returns self.
         """
         self.anchor_primal = (x_init, u_init, b_init)
         self.x_init = x_init
@@ -194,7 +189,6 @@ class GlycolysisParameterEstimator:
         self.theta_init = {p: float(theta_full[p]) for p in ALL_PARAMS}
         self.theta = pd.Series({p: float(theta_full[p]) for p in self.free_params}, dtype=float)
         self.obj_value = float(obj_value)
-        self.cov = None
         return self
 
     def has_solution(self):
@@ -277,11 +271,10 @@ class GlycolysisParameterEstimator:
         self.theta = pd.Series(dict(theta), dtype=float)
         return self.theta
 
-    def solve_from(self, point, base_theta_init, base_options, extra_options):
+    def solve_from(self, point, base_theta_init, base_options):
         """
-        Re-solve with the start ``point`` (theta, primal x / u, free drains b) and the options ``base_options`` +
-        ``extra_options``.  Returns the solved point, or None if IPOPT did not converge (a normal outcome in a flat
-        valley; the caller keeps its best point).
+        Re-solve with the start ``point`` (theta, primal x / u, free drains b) and the warm-start options.  Returns
+        the solved point, or None if IPOPT did not converge (the caller keeps its best point).
         """
         theta_init = dict(base_theta_init)
         for p in self.free_params:
@@ -289,7 +282,7 @@ class GlycolysisParameterEstimator:
         self.theta_init = theta_init
         self.x_init, self.u_init = point["primal"]
         self.b_init = point["b"]
-        self.solver_options = {**base_options, **extra_options}
+        self.solver_options = dict(WARM_START_OPTIONS)
         try:
             self.exp_list = self.build_experiments()
             self.pest = self.build_parmest()
@@ -304,31 +297,23 @@ class GlycolysisParameterEstimator:
         return {"obj": float(self.obj_value), "theta": theta.copy(), "primal": self.primal_start(),
                 "b": self.primal_b_free(), "pest": self.pest, "exp_list": self.exp_list}
 
-    def refine_anchor(self, max_iter=20, primary_options=None):
+    def refine_anchor(self, max_rounds=20):
         """
-        Re-optimize AT the current fit until it is a fixed point of the optimizer.
+        Re-solve from the current fit, warm started, until the objective stops decreasing.
 
         ``estimate()`` started from theta alone re-initializes x and u from the data, so its solution is in general
-        not an optimum of the extensive form: re-optimizing from the solved primal point lowers the objective
-        further.  Each round re-solves from the best point with the estimator's options plus ``primary_options``
-        and, if that fails or does not lower the objective, once more with the tight monotone warm start (which keeps
-        descending where the adaptive barrier update stalls).  Only strict improvements are accepted; the rounds stop
-        when the decrease is below 1e-6 of the objective.  Without a fit, ``estimate()`` is called first.  On return
-        the estimator holds the best point (theta clipped into its bounds: IPOPT can return it ~1e-9 outside, which
-        parmest then refuses).
+        not an optimum of the extensive form: re-solving from the solved primal point lowers the objective further.
+        Only strict improvements are accepted; the rounds stop when the decrease is below 1e-6 of the objective.
+        Without a fit, ``estimate()`` is called first.  On return the estimator holds the best point (theta clipped
+        into its bounds: IPOPT can return it ~1e-9 outside, which parmest then refuses).
         """
         if self.theta is None or not self.has_solution():
             self.estimate()
         base_theta_init = dict(self.theta_init or {})
         base_options = dict(self.solver_options)
         best = self.current_point(self.theta)
-        attempts = [dict(primary_options or {}), dict(TIGHT_OPTIONS)]
-        for _round in range(max_iter):
-            new = None
-            for extra_options in attempts:
-                new = self.solve_from(best, base_theta_init, base_options, extra_options)
-                if new is not None and new["obj"] < best["obj"]:
-                    break
+        for _round in range(max_rounds):
+            new = self.solve_from(best, base_theta_init, base_options)
             if new is None or not new["obj"] < best["obj"]:
                 break
             converged = (best["obj"] - new["obj"]) < 1e-6 * best["obj"]
@@ -361,24 +346,6 @@ class GlycolysisParameterEstimator:
         self.theta = pd.Series(clipped, dtype=float)
         self.theta_init = {**self.theta_init, **clipped}
         self.obj_value = float(best["obj"])
-        self.cov = None
-
-    def covariance(self):
-        """
-        Parameter covariance (DataFrame) from parmest's k_aug method (needs the k_aug and dot_sens binaries).  There
-        is no fallback: a failure raises.  Sets ``cov_psd``.
-        """
-        if self.theta is None:
-            self.estimate()
-        self.cov = None
-        self.cov_psd = None
-        cov = self.pest.cov_est(method="automatic_differentiation_kaug", solver="ipopt", step=1e-3)
-        self.cov = cov
-        matrix = np.asarray(cov, dtype=float)
-        eigenvalues = np.linalg.eigvalsh(0.5 * (matrix + matrix.T))
-        largest = max(abs(eigenvalues).max(), 1e-300)
-        self.cov_psd = bool(np.all(np.isfinite(eigenvalues)) and eigenvalues.min() >= -1e-10 * largest)
-        return self.cov
 
     def kinetic_model(self):
         """The CasADi kinetics of this estimator's bounds, built at the first use (compiling the NLP is slow)."""
@@ -467,8 +434,8 @@ class GlycolysisParameterEstimator:
         and b with ALL parameters fixed at ``theta`` (default: the fit), started at x_init / u_init / b_init.
         parmest's 'SSE_weighted' is 0.5 * sum(((y_meas - y) / sigma)^2) per scenario and its objective is the MEAN
         over the scenarios, so the MEAN row (TOTAL / number of conditions) is the one comparable to obj_value.
-        Columns flux_wsse, met_wsse, u_wsse (always 0: the cofactors are not measured outputs; the column keeps the
-        layout of the earlier runs), total and termination; rows: conditions, TOTAL, MEAN.
+        Columns flux_wsse, met_wsse, u_wsse (always 0: the cofactors are not measured outputs), total and
+        termination; rows: conditions, TOTAL, MEAN.
         """
         check_solver("ipopt")
         theta_full = self.full_theta(theta)

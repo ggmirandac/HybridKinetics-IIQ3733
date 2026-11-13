@@ -1,0 +1,25 @@
+\begin{table}[h]
+\centering
+\caption{Free parameters of the final model, with the verdict of each uncertainty analysis: estimate, bootstrap 95\% percentile interval, the ratio of its ends and the bootstrap verdict (practically identifiable if the ratio is at most \SIbootRatio{} and the interval does not reach a parameter bound), and the class of the profile likelihood from $\hat\theta/\SIprofileFactor$ to $\SIprofileFactor\,\hat\theta$ (an arm crosses where it exceeds the threshold and stays above it farther out; identifiable: both arms cross within a factor \SIbootRatio{} in total; wide: both cross, farther apart; one-sided: one arm; flat: none). Near-optimal: 95\% percentile interval of every bootstrap fit within the likelihood-ratio threshold of the best fit of its resample. Both: the sides on which the two analyses bound the parameter together, a side being bounded when the profile crosses the threshold on it and the bootstrap interval does not reach the parameter bound there (identifiable: both sides, and identifiable by each analysis; wide: both sides, farther apart; bounded below or above: one side only, so the data constrain the parameter from that side and further data are needed to bound the other; not identifiable: neither side). $^\ddagger$The interval reaches a parameter bound.}
+\label{tab:free_parameters}
+\begin{tabular}{lrrrrlll}
+\toprule
+Parameter & Estimate & Bootstrap 95\% interval & Ratio & Near-optimal interval & Bootstrap & Profile & Both \\
+\midrule
+$v_{\max}^{1}$ & 80.3 & 72.2 -- 99.8$^\ddagger$ & 1.38 & 66.7 -- 99.9 & not identifiable & one-sided & bounded below \\
+$K_{s,\mathrm{g6p}}^{2}$ & $5.03 \times 10^{-3}$ & $1.01 \times 10^{-3}$ -- 3.77 & 3730 & $1.01 \times 10^{-3}$ -- 2.87 & not identifiable & flat & not identifiable \\
+$k_{\mathrm{cat}}^{2}$ & 978 & 461 -- 1000$^\ddagger$ & 2.17 & 512 -- 1000 & not identifiable & one-sided & bounded below \\
+$k_{\mathrm{cat}}^{3}$ & 974 & 700 -- 1000$^\ddagger$ & 1.43 & 747 -- 1000 & not identifiable & one-sided & bounded below \\
+$K_{s,\mathrm{fbp}}^{4}$ & $1.00 \times 10^{-3}$ & $1.00 \times 10^{-3}$ -- $1.02 \times 10^{-3}$$^\ddagger$ & 1.02 & $1.00 \times 10^{-3}$ -- $1.01 \times 10^{-3}$ & not identifiable & one-sided & bounded above \\
+$k_{\mathrm{cat}}^{4}$ & 2.70 & 2.44 -- 3.26 & 1.33 & 2.48 -- 3.09 & practically identifiable & identifiable & identifiable \\
+$k_{\mathrm{cat}}^{5}$ & 6870 & 3970 -- 9900$^\ddagger$ & 2.49 & 1890 -- $1.00 \times 10^{4}$ & not identifiable & flat & not identifiable \\
+$k_{\mathrm{cat}}^{6}$ & 623 & 192 -- 883 & 4.59 & 146 -- 822 & practically identifiable & one-sided & bounded above \\
+$k_{\mathrm{cat}}^{7}$ & 876 & 689 -- 1000$^\ddagger$ & 1.45 & 390 -- 1000 & not identifiable & one-sided & bounded below \\
+$K_{s,\mathrm{adp}}^{7}$ & 0.0147 & $1.02 \times 10^{-3}$ -- 0.295 & 290 & $1.01 \times 10^{-3}$ -- 0.244 & not identifiable & flat & not identifiable \\
+$k_{\mathrm{cat}}^{8}$ & 652 & 251 -- 944 & 3.77 & 251 -- 971 & practically identifiable & one-sided & bounded below \\
+$K_{s,\mathrm{3pg}}^{8}$ & 0.101 & $1.10 \times 10^{-3}$ -- 1.60 & 1450 & $1.07 \times 10^{-3}$ -- 1.08 & not identifiable & flat & not identifiable \\
+$k_{\mathrm{cat}}^{9}$ & 6.71 & 5.21 -- 661 & 127 & 5.26 -- 40.8 & not identifiable & identifiable & wide \\
+$K_{s,\mathrm{2pg}}^{9}$ & $1.05 \times 10^{-3}$ & $1.00 \times 10^{-3}$ -- 0.234$^\ddagger$ & 233 & $1.00 \times 10^{-3}$ -- 0.0950 & not identifiable & one-sided & bounded above \\
+\bottomrule
+\end{tabular}
+\end{table}

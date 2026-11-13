@@ -9,9 +9,7 @@ Set HK_ALLOW_THREADS=1 to opt out.
 
 It also puts the running interpreter's own bin directory first on PATH: a notebook kernel started without
 ``conda activate`` does not have it, and the IPOPT 3.13 bundled with IDAES (~/.idaes/bin) rejects options such as
-acceptable_iter, which makes every solve fail; the conda IPOPT 3.14 next to the interpreter must win.  ~/.idaes/bin
-(k_aug, dot_sens for the covariance) is appended to PATH, and to DYLD_FALLBACK_LIBRARY_PATH because the k_aug binary
-does not find the libgfortran bundled next to it otherwise.
+acceptable_iter, which makes every solve fail; the conda IPOPT 3.14 next to the interpreter must win.
 """
 import os
 import sys
@@ -28,14 +26,6 @@ if os.environ.get("HK_ALLOW_THREADS", "0") != "1":
 INTERPRETER_BIN = os.path.dirname(os.path.abspath(sys.executable))
 if INTERPRETER_BIN not in os.environ.get("PATH", "").split(os.pathsep):
     os.environ["PATH"] = INTERPRETER_BIN + os.pathsep + os.environ.get("PATH", "")
-
-IDAES_BIN = os.path.join(os.path.expanduser("~"), ".idaes", "bin")
-if os.path.isdir(IDAES_BIN):
-    if IDAES_BIN not in os.environ.get("PATH", "").split(os.pathsep):
-        os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + IDAES_BIN
-    library_path = os.environ.get("DYLD_FALLBACK_LIBRARY_PATH", "")
-    if IDAES_BIN not in library_path.split(os.pathsep):
-        os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = IDAES_BIN + os.pathsep + library_path if library_path else IDAES_BIN
 
 def check_solver(name="ipopt"):
     """Raise a RuntimeError with the install command if the solver is not available to Pyomo."""

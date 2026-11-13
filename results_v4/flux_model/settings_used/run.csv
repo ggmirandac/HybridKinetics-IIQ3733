@@ -1,7 +1,0 @@
-name,value,type,description
-n_jobs,8,int,worker processes of the multistart / sensitivities / bootstrap / profiles / LOOCV
-stage0_seed,0,int,seed of the stage 0 multistart
-stage0_warm_start,Data/stage0_warm_start,str,directory with the anchor_state.pkl that warm starts stage 0 (relative to the repo root; copied from results_v2/flux_model_b2sd/stage0: the stage-0 anchor of the v2 b2sd run); without it stage 0 starts from the literature values
-out_dir,results_v4/flux_model,str,default output directory of the selection run
-compare_to,results_v3/flux_model,str,previous run that REPORT.md (final_fit.ipynb) compares the final fit with (relative to the repo root; the comparison is left out when the folder is missing)
-isolation_n_starts,30,int,isolation.ipynb: random starts of the multistart in every cell of the bound factorial

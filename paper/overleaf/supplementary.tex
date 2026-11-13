@@ -1,0 +1,520 @@
+\clearpage
+\onecolumn
+\supplementarysection
+% Supplementary material, made by paper/build_paper.py from the results of the pipeline (results/flux_model).
+\subsection{Kinetic model expressions}\label{sec: kinetic expressions}
+
+
+
+% ---------------------------------------------------------------
+\textbf{Phosphotransferase system (PTS)}
+
+\begin{align}
+    v_1 =
+    \frac{
+        v^{\max}_{PTS}\,[glc]\,\dfrac{[pep]}{[pyr]}
+    }{
+        K_{a1} + K_{a2}\dfrac{[pep]}{[pyr]}
+        + K_{a3}[glc]
+        + [glc]\,\dfrac{[pep]}{[pyr]}
+    }
+    \cdot
+    \frac{1}{1 + \left(\dfrac{[g6p]}{K_{g6p}}\right)^{n_{g6p}}}
+    \label{eqn: PTS}
+\end{align}
+Empirical formulation from \textcite{Kadir2010ModelingsimulationmainmetabolismEscherichiacoliitsseveralsinglegeneknockoutmutantsexperimentalverification}; thermodynamic driving force not applicable.
+
+% ---------------------------------------------------------------
+\textbf{Glucose 6-phosphate isomerase (PGI)} \quad EC: 5.3.1.9 \quad $g6p \rightleftharpoons f6p$
+
+\begin{equation}
+    \kappa_2 = \frac{[g6p]/K_{S,g6p}^2}%
+                    {1 + [g6p]/K_{S,g6p}^2 + [f6p]/K_{P,f6p}^2}
+    \qquad
+    \gamma_2 = 1 - \frac{[f6p]}{[g6p]\,K'_{eq,2}}
+\end{equation}
+\begin{equation}
+    v_2 = Pgi \cdot k^+_{cat,2} \cdot \kappa_2 \cdot \gamma_2
+    \label{eqn: pgi}
+\end{equation}
+
+% ---------------------------------------------------------------
+\textbf{Phosphofructokinase (PFK)} \quad EC: 2.7.1.11 \quad $f6p + atp \rightleftharpoons fbp + adp$
+
+\begin{equation}
+    \kappa_3 = \frac{([f6p]/K_{S,f6p}^3)\,([atp]/K_{S,atp}^3)}%
+                    {1 + ([f6p]/K_{S,f6p}^3)([atp]/K_{S,atp}^3) + ([fbp]/K_{P,fbp}^3)([adp]/K_{P,adp}^3)}
+    \qquad
+    \gamma_3 = 1 - \frac{[fbp]\,[adp]}{[f6p]\,[atp]\,K'_{eq,3}}
+\end{equation}
+\begin{equation}
+    v_3 = PfkB \cdot k^+_{cat,3} \cdot \kappa_3 \cdot \gamma_3
+    \label{eqn: pfk}
+\end{equation}
+
+% ---------------------------------------------------------------
+\textbf{Fructose-bisphosphate aldolase (FBA)} \quad EC: 4.1.2.13 \quad $fbp \rightleftharpoons g3p + dhap$
+
+\begin{equation}
+    \kappa_4 = \frac{[fbp]/K_{S,fbp}^4}%
+                    {1 + [fbp]/K_{S,fbp}^4 + ([g3p]/K_{P,g3p}^4)([dhap]/K_{P,dhap}^4)}
+    \qquad
+    \gamma_4 = 1 - \frac{[g3p]\,[dhap]}{[fbp]\,K'_{eq,4}}
+\end{equation}
+\begin{equation}
+    v_4 = FbaA \cdot k^+_{cat,4} \cdot \kappa_4 \cdot \gamma_4
+    \label{eqn: fba}
+\end{equation}
+
+% ---------------------------------------------------------------
+\textbf{Triosephosphate isomerase (TPI)} \quad EC: 5.3.1.1 \quad $dhap \rightleftharpoons g3p$
+
+\begin{equation}
+    \kappa_5 = \frac{[dhap]/K_{S,dhap}^5}%
+                    {1 + [dhap]/K_{S,dhap}^5 + [g3p]/K_{P,g3p}^5}
+    \qquad
+    \gamma_5 = 1 - \frac{[g3p]}{[dhap]\,K'_{eq,5}}
+\end{equation}
+\begin{equation}
+    v_5 = TpiA \cdot k^+_{cat,5} \cdot \kappa_5 \cdot \gamma_5
+    \label{eqn: tpi}
+\end{equation}
+
+% ---------------------------------------------------------------
+\textbf{Glyceraldehyde 3-phosphate dehydrogenase (GAPDH)} \quad EC: 1.2.1.12 \quad $g3p + pi + nad \rightleftharpoons pgp + nadh$
+
+\begin{equation}
+    \kappa_6 = \frac{([g3p]/K_{S,g3p}^6)([pi]/K_{S,pi}^6)([nad]/K_{S,nad}^6)}%
+                    {1 + ([g3p]/K_{S,g3p}^6)([pi]/K_{S,pi}^6)([nad]/K_{S,nad}^6) + ([pgp]/K_{P,pgp}^6)([nadh]/K_{P,nadh}^6)}
+\end{equation}
+\begin{equation}
+    \gamma_6 = 1 - \frac{[pgp]\,[nadh]}{[g3p]\,[pi]\,[nad]\,K'_{eq,6}}
+\end{equation}
+\begin{equation}
+    v_6 = GapA \cdot k^+_{cat,6} \cdot \kappa_6 \cdot \gamma_6
+    \label{eqn: gapdh}
+\end{equation}
+
+% ---------------------------------------------------------------
+\textbf{Phosphoglycerate kinase (PGK)} \quad EC: 2.7.2.3 \quad $pgp + adp \rightleftharpoons 3pg + atp$
+
+\begin{equation}
+    \kappa_7 = \frac{([pgp]/K_{S,pgp}^7)([adp]/K_{S,adp}^7)}%
+                    {1 + ([pgp]/K_{S,pgp}^7)([adp]/K_{S,adp}^7) + ([3pg]/K_{P,3pg}^7)([atp]/K_{P,atp}^7)}
+    \qquad
+    \gamma_7 = 1 - \frac{[3pg]\,[atp]}{[pgp]\,[adp]\,K'_{eq,7}}
+\end{equation}
+\begin{equation}
+    v_7 = Pgk \cdot k^+_{cat,7} \cdot \kappa_7 \cdot \gamma_7
+    \label{eqn: pgk}
+\end{equation}
+
+% ---------------------------------------------------------------
+\textbf{Phosphoglycerate mutase (GPM)} \quad EC: 5.4.2.11 \quad $3pg \rightleftharpoons 2pg$
+
+\begin{equation}
+    \kappa_8 = \frac{[3pg]/K_{S,3pg}^8}%
+                    {1 + [3pg]/K_{S,3pg}^8 + [2pg]/K_{P,2pg}^8}
+    \qquad
+    \gamma_8 = 1 - \frac{[2pg]}{[3pg]\,K'_{eq,8}}
+\end{equation}
+\begin{equation}
+    v_8 = GpmA \cdot k^+_{cat,8} \cdot \kappa_8 \cdot \gamma_8
+    \label{eqn: gpm}
+\end{equation}
+
+% ---------------------------------------------------------------
+\textbf{Enolase (ENO)} \quad EC: 4.2.1.11 \quad $2pg \rightleftharpoons pep$
+
+\begin{equation}
+    \kappa_9 = \frac{[2pg]/K_{S,2pg}^9}%
+                    {1 + [2pg]/K_{S,2pg}^9 + [pep]/K_{P,pep}^9}
+    \qquad
+    \gamma_9 = 1 - \frac{[pep]}{[2pg]\,K'_{eq,9}}
+\end{equation}
+\begin{equation}
+    v_9 = Eno \cdot k^+_{cat,9} \cdot \kappa_9 \cdot \gamma_9
+    \label{eqn: eno}
+\end{equation}
+The stoichiometric matrix of this system is:
+%\usepackage{blkarray}   % in preamble
+
+\begin{align}
+\mathbf{S} =
+\begin{blockarray}{c ccccccccc}
+       & \text{pts} & \text{pgi} & \text{pfk} & \text{fba} & \text{tpi} & \text{gap} & \text{pgk} & \text{gpm} & \text{eno} \\
+\begin{block}{c[ccccccccc]}
+  \text{2pg}  &  0 &  0 &  0 &  0 &  0 &  0 &  0 &  1 & -1 \\
+  \text{3pg}  &  0 &  0 &  0 &  0 &  0 &  0 &  1 & -1 &  0 \\
+  \text{dhap} &  0 &  0 &  0 &  1 & -1 &  0 &  0 &  0 &  0 \\
+  \text{f6p}  &  0 &  1 & -1 &  0 &  0 &  0 &  0 &  0 &  0 \\
+  \text{fbp}  &  0 &  0 &  1 & -1 &  0 &  0 &  0 &  0 &  0 \\
+  \text{g3p}  &  0 &  0 &  0 &  1 &  1 & -1 &  0 &  0 &  0 \\
+  \text{g6p}  &  1 & -1 &  0 &  0 &  0 &  0 &  0 &  0 &  0 \\
+  \text{pep}  & -1 &  0 &  0 &  0 &  0 &  0 &  0 &  0 &  1 \\
+  \text{pgp}  &  0 &  0 &  0 &  0 &  0 &  1 & -1 &  0 &  0 \\
+\end{block}
+\end{blockarray}
+\label{eqn: S matrix}
+\end{align}
+\newpage
+
+\section{Figures}
+\subsection{\textit{Escherichia coli} metabolism}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=0.85\linewidth]{figuras/glycolisis_modified.png}
+    \caption{Carbon metabolism pathways of \textit{E.coli} \cite{Ishii2007a}. The reaction highlighted in green encompass the studied reactions.}
+    \label{fig:e.glicolisis}
+\end{figure}
+\clearpage
+
+\subsection{Parameter selection}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\linewidth]{supplementary_figures/figS_selection_path.pdf}
+    \caption{\textbf{Parameter selection, decision by decision.} \textbf{a)} Parameter fixed by each decision (names coloured by type: PTS, $k_{cat}$, $K$) and the rule that fixed it: 8 structural zeros of $\mathbf{R}$ in the structural phase, then 14 directions of a rank-deficient FIM $\mathbf{F}$ and 1 highly correlated pair ($|r|>0.9$) in the practical phase, one decision per iteration. The dotted lines separate the two phases and, lighter, the stages of the practical phase named above the panel: first the rank deficiency of $\mathbf{F}$ (the smallest singular value of $\mathbf{G}$ below the threshold), then, once $\mathbf{F}$ has full rank, the correlation criterion. \textbf{b)} Number of free parameters after each decision. \textbf{c)} Objective $g$ of the current fit after each decision; the structural fixes are refitted once, after the last one. Shaded: objective of the final model plus the 95\% likelihood-ratio threshold $\Delta=0.087$. \textbf{d)} Smallest singular value ratio $\sigma_{\min}/\sigma_1$ of $\mathbf{R}$ before each structural decision (threshold $\epsilon_1=10^{-10}$; the open marker is the check that ends the structural phase) and smallest eigenvalue ratio $\lambda_{\min}/\lambda_{\max}$ of $\mathbf{F}$ at each practical iteration (threshold $\epsilon_2=10^{-8}$). \textbf{e)} Largest absolute correlation between free parameters once $\mathbf{F}$ has full rank.}
+    \label{fig:selection_path}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\linewidth]{supplementary_figures/figS_final_identifiability.pdf}
+    \caption{\textbf{Identifiability of the final model.} \textbf{a)} Singular values of the stacked rate sensitivity matrix $\mathbf{R}$ \cite{stigter2015fast} at the initial estimation (37 free parameters) and at the final model (14 free parameters); the 8 values of the initial estimation below $\epsilon_1$ are its structural zeros. \textbf{b)} Eigenvalues of the FIM $\mathbf{F}$ after the structural phase (29 free parameters) and at the final model; the values below $\epsilon_2$ are the directions removed in the practical phase, and all eigenvalues of the final model lie above it (full rank). \textbf{c)} Correlations of the free parameters of the final model from $\mathbf{F}^{-1}$, under a header with the reaction of each parameter (colours of Figure~\ref{fig:main}a) and with names coloured by type; values are shown where $|r|\geq 0.5$, and none exceeds $0.9$.}
+    \label{fig:final_identifiability}
+\end{figure}
+\clearpage
+
+\subsection{Model evaluation}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\linewidth]{supplementary_figures/figS_parity_stages.pdf}
+    \caption{\textbf{Parity of the model predictions at every stage.} Measured against predicted LI fluxes (top) and metabolite concentrations (bottom, log scale) for the literature model (all 37 parameters at their literature values), the initial estimation (all 37 parameters free), the final model (14 free parameters) and LOOCV (held-out predictions of the final structure). RMSE and $R^2$ against the per-output mean of the measurements.}
+    \label{fig:paritylitfinal}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\linewidth]{supplementary_figures/figS_parameter_evolution.pdf}
+    \caption{\textbf{Parameter values across the stages.} All 37 parameters, grouped by reaction (coloured bands and strips, as in Figure~\ref{fig:main}a; names coloured by type), in the literature model, after the initial estimation and in the final model; the grey line spans the three values. Filled diamonds: free in the final model; open diamonds: fixed, at the value estimated when the parameter was fixed. Right: free, or the rule that fixed the parameter (with the practical iteration), in the rule colours of Figure~\ref{fig:selection_path}. The values are listed in Table~\ref{tab:param_evolution}.}
+    \label{fig:fixed evol}
+\end{figure}
+\clearpage
+
+\subsection{Parameter uncertainty}
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\linewidth]{supplementary_figures/figS_bootstrap_all.pdf}
+    \caption{\textbf{Bootstrap distributions of the free parameters.} Case bootstrap with 5000 resamples of the 22 conditions (5000 converged), each refitted warm started at the final estimate, from 3 profile likelihood points drawn at random among those within the likelihood-ratio threshold and from 5 further starts with every free parameter at the estimate times $10^{u}$, $u \sim U(-1, 1)$; the best fit of each resample is kept. $\theta^*$: estimate of a resample; $\hat\theta$: estimate of the final model (solid line). Shaded: 95\% percentile interval; panel titles: ratio of its ends $p_{97.5}/p_{2.5}$, and ``bound'' where the interval reaches a parameter bound. Colour: verdict of the bootstrap alone, practically identifiable if the ratio is at most 10 and the interval does not reach a bound (Table~\ref{tab:free_parameters}).}
+    \label{fig:boostrapdist}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\linewidth]{supplementary_figures/figS_profiles_all.pdf}
+    \caption{\textbf{Profile likelihoods of the free parameters.} Objective of the fit with the parameter fixed at $\theta$ and the other free parameters re-optimised (warm started at the previous point, plus 3 starts around it; a point that a point farther out improved on by more than $\Delta$ was refitted from that point), relative to the best objective found, from $\hat\theta/10$ to $10\,\hat\theta$ with 30 logarithmically spaced points on each side. Dashed: 95\% threshold $\Delta=\chi^2_{1,0.95}/(2N)=0.087$. Missing points are failed re-optimisations or values beyond a parameter bound. Title and colour: profile class, in the colours of Figure~\ref{fig:main}e (an arm crosses $\Delta$ where it exceeds it and stays above it farther out; identifiable: both arms cross; one-sided: one arm; flat: none).}
+    \label{fig:proflike}
+\end{figure}
+
+\clearpage
+\section{Tables}
+
+\begin{table}[h]
+\centering
+\caption{Parameter descriptions}
+\label{table:Parameter descriptions}
+\begin{tabular}{l|l}
+\textbf{Symbol} & \textbf{Meaning} \\
+\hline
+$e_r$                  & Enzyme concentration of reaction $r$ \\[4pt]
+$k^+_{cat,r}$          & Forward turnover number of reaction $r$ \\[4pt]
+$K^r_{S,s}$            & Michaelis-Menten constant of substrate $s$
+ in reaction $r$ \\[4pt]
+$K^r_{P,p}$            & Michaelis-Menten constant of product $p$
+ in reaction $r$\\[4pt]
+$K'_{eq,r}$            & Equilibrium constant of reaction $r$\\[4pt]
+$[s]$, $[p]$           & Concentration of substrate $s$ and product $p$\\[4pt]
+$v^{\max}_{PTS}$, $K_{a1}$, $K_{a2}$, $K_{a3}$, $K_{g6p}$ & Parameters of the PTS rate law \\[4pt]
+$n_{g6p}$              & Hill coefficient of the G6P inhibition of the PTS (fixed at 4)
+\end{tabular}
+\end{table}
+
+
+
+
+\begin{table}[h]
+\centering
+\caption{Metabolites involved, abbreviation and  their mass-balance classification}
+\label{tab: metabolites}
+\begin{tabular}{lll}
+\textbf{Abbrev.} & \textbf{Metabolite} & \textbf{Classification} \\
+\hline
+$glc$  & Glucose                    & Imbalanced \\
+$g6p$  & Glucose 6-phosphate        & Balanced \\
+$f6p$  & Fructose 6-phosphate       & Balanced \\
+$fbp$  & Fructose 1,6-bisphosphate  & Balanced \\
+$dhap$ & Dihydroxyacetone phosphate & Balanced \\
+$g3p$  & Glyceraldehyde 3-phosphate & Balanced \\
+$pgp$  & 1,3-Bisphosphoglycerate    & Balanced \\
+$3pg$  & 3-Phosphoglycerate         & Balanced \\
+$2pg$  & 2-Phosphoglycerate         & Balanced \\
+$pep$  & Phosphoenolpyruvate        & Balanced \\
+$pyr$  & Pyruvate                   & Imbalanced \\
+$atp$  & ATP                        & Imbalanced \\
+$adp$  & ADP                        & Imbalanced \\
+$nad$  & NAD$^+$                    & Imbalanced \\
+$nadh$ & NADH                       & Imbalanced \\
+$pi$   & Inorganic phosphate        & Imbalanced \\
+\end{tabular}
+\end{table}
+
+
+% con esto se saca la matriz de covarianza luego la de correlacion y se hace un heat map, y a parte se hace una matriz de sensibilidad con el mismo G (derivadas de los metabolitos (x) con respecto a los parametros) que usamos para la FIM. Con esto evaluamos los parametros a fijar, al fijarlos (ojalas muchos) corremos el modelo reducido para estimar parametros. Obtenemos intervalos de confianza entre estimaciones (las da el mismo algoritmo) Y sacamos conclusiones a partir de los resultados, como identificabilidad, comportamiento de vía, importancia de la via para el metabolismo de carbono celular, definimos el future work, que es seguir validando el modelo (cross validation) y la capacidad predictiva y lo del control coefficients Jv Jx, para sugerir cambios en enzima para aumentar o disminuir flujos. (sensibilidad de flujos ante concentracion de cada enzima)
+
+
+% equilibrator (ph 7 pmg 3 ionic strenght 0.1) explicar que se utilizan los datos encontrados com parametros a fijar y los no encontrados se optimizan, upper y lower bounds se dejan en un rango grande, k cat y Km a partir de literatura (graficos de paper profe (rangos de enzima)) 
+
+
+
+\renewcommand{\arraystretch}{1.2}
+
+\begin{longtable}{c
+>{\RaggedRight\arraybackslash}p{4cm}
+>{\RaggedRight\arraybackslash}p{5.5cm}
+>{\RaggedRight\arraybackslash}p{5.6cm}
+>{\RaggedRight\arraybackslash}p{2cm}}
+
+\caption{Glycolysis kinetic parameters in  \textit{E. coli} obtained from EcoCyc\cite{karp2025ecocyc}, Kadir et al. \cite{Kadir2010ModelingsimulationmainmetabolismEscherichiacoliitsseveralsinglegeneknockoutmutantsexperimentalverification} and Equilibrator \cite{beber2022equilibrator}.}
+\label{tab:glicolisis}\\
+
+\toprule
+\textbf{\#} &
+\textbf{Enzime (gen)} &
+\textbf{Reaction} &
+\textbf{Parameters} &
+\textbf{Source} \\
+\midrule
+\endfirsthead
+
+\multicolumn{5}{c}{\tablename\ \thetable\ -- continuation} \\
+\toprule
+\textbf{\#} &
+\textbf{Enzime (gen)} &
+\textbf{Reaction} &
+\textbf{Parameters} &
+\textbf{Source} \\
+\midrule
+\endhead
+
+\midrule
+\multicolumn{5}{r}{Continues on next page}
+\endfoot
+
+\bottomrule
+\endlastfoot
+
+1 &
+Phosphotransferase system &
+$glc + pep \to g6p + pyr$ &\makecell[l]{
+$v_{max}^{PTS}$: 25.739 mmol/(gDCW·h)\vspace{3pt}\\
+$K_{a1}$: 1.0 mM\vspace{3pt}\\
+$K_{a2}$: 0.01 mM\vspace{3pt}\\
+$K_{a3}$: 1.0 mM\vspace{3pt}\\
+$n_{g6p}$: 4\vspace{3pt}\\
+$K_{g6p}$: 0.5 mM\vspace{3pt}\\}
+&
+\cite{Kadir2010ModelingsimulationmainmetabolismEscherichiacoliitsseveralsinglegeneknockoutmutantsexperimentalverification}
+\\
+\hline\vspace{3pt}
+
+2 &
+Phosphoglucose isomerase (\textit{Pgi}) &
+$g6p\rightleftharpoons{f6p}$ &\makecell[l]{
+$K_{eq}:0.381$\vspace{3pt}\\
+$K_m^{g6p}$: 1.018 mM\vspace{3pt}\\
+$K_m^{f6p}$: 0.078 mM\vspace{3pt}\\
+$k_{cat}:--$
+}
+%hay otro valor de f6p (0.2) en el mismo Ecocyc pero este (0.078) es del mismo estudio que el de g6p.
+&
+\href{https://ecocyc.org/gene?orgid=ECOLI&id=PGLUCISOM}{EcoCyc: EG10702}
+\\
+\hline\vspace{3pt}
+3 &
+Phosphofructokinase (\textit{PfkB}) &
+$f6p+atp\to fbp+adp$  &\makecell[l]{
+$K_{eq}:341.298$\vspace{3pt}\\
+$K_m^{f6p}$: 0.013 mM\vspace{3pt}\\
+$K_m^{atp}$: 0.02 mM\vspace{3pt}\\
+$K_m^{fbp}:$ 0.14 mM\vspace{3pt}\\
+$K_m^{adp}: --$\vspace{3pt}\\
+$k_{cat}:--$\vspace{3pt}\\}
+&
+\href{https://ecocyc.org/gene?orgid=ECOLI&id=EG10700}{EcoCyc: EG10700}
+\\
+\hline\vspace{3pt}
+4 &
+Aldolase (\textit{FbaA}) &
+$fbp\rightleftharpoons g3p+dhap$ 
+&\makecell[l]{
+$K_{eq}:0.1616$\vspace{3pt}\\
+$K_m^{fbp}$: 0.24 mM\vspace{3pt}\\
+$K_m^{g3p}:--$\vspace{3pt}\\
+$K_m^{dhap}:--$\vspace{3pt}\\
+$k_{cat}:10.33 s^{-1} \to 0.95 \frac{mmol}{mg\cdot h}$\vspace{3pt}\\
+}
+%kcat se calcula con MW de secuencia: 39147 D
+&
+\href{https://ecocyc.org/gene?orgid=ECOLI&id=EG10282}{EcoCyc: EG10282}
+\\ 
+\hline 
+
+5 &
+TPI (\textit{TpiA}) &
+$dhap\rightleftharpoons g3p$ 
+&\makecell[l]{
+$K_{eq}:0.113$\vspace{3pt}\\
+$K_m^{dhap}$: 1.03 mM\vspace{3pt}\\
+$K_m^{g3p}: --$\vspace{3pt}\\
+$k_{cat}$: 9000 s$^{-1} \to 1201.2 \frac{mmol}{mg\cdot h}$\vspace{3pt} \\
+} 
+%para calcular kcat se ocupa el MW de secuencia 26972 D
+&
+\href{https://ecocyc.org/gene?orgid=ECOLI&id=EG11015}{EcoCyc: EG11015}
+\\
+\hline
+6 &
+GAPDH (\textit{GapA}) &
+$g3p+nad+pi\rightleftharpoons pgp+nadh$ 
+&\makecell[l]{
+$K_{eq}:0.00026$\vspace{3pt}\\
+$K_m^{g3p}$: 0.89 mM\vspace{3pt}\\
+$K_m^{nad}$: 0.045 mM\vspace{3pt}\\
+$K_m^{pi}$: 0.53 mM\vspace{3pt}\\
+$K_m^{pgp}:--$\vspace{3pt}\\
+$K_m^{nadh}:--$\vspace{3pt}\\
+$k_{cat}:--$}
+&
+\href{https://ecocyc.org/gene?orgid=ECOLI&id=GAPDH-A-MONOMER}{EcoCyc: EG10367}
+\\
+\hline
+7 &
+Phosphoglycerate kinase (\textit{Pgk}) &
+$pgp+adp\rightleftharpoons3pg+atp$ &
+\makecell[l]{
+$K_{eq}:1849.572$\vspace{3pt}\\
+$K_m^{pgp}:--$\vspace{3pt}\\
+$K_m^{adp}:--$\vspace{3pt}\\
+$K_m^{3pg}:--$\vspace{3pt}\\
+$K_m^{atp}:--$\vspace{3pt}\\
+$k_{cat}:--$}
+&
+Equilibrator \cite{beber2022equilibrator}  
+\\
+\hline
+8 &
+Phosphoglycerate mutase (\textit{GpmA}) &
+$3pg\rightleftharpoons2pg$ 
+&\makecell[l]{
+$K_{eq}:0.1874$\vspace{3pt}\\
+$K_m^{3pg}$: 0.2 mM\vspace{3pt}\\
+$K_m^{2pg}$: 0.19 mM\vspace{3pt}\\
+% en el informe 2 k_cat=220 1/s
+$k_{cat}$: 330 s$^{-1}$ $\to$ 41.602 $\frac{mmol}{mg\cdot h}$\vspace{3pt} \\}
+%k cat se calculó usando el MW del polipéptido obtenido de secuencia: 28.56kD
+&
+\href{https://ecocyc.org/gene?orgid=ECOLI&id=EG11699}{EcoCyc: EG11699 }
+\\
+\hline
+9 &
+Enolase (\textit{Eno}) &
+$2pg\rightleftharpoons pep$ 
+&\makecell[l]{
+$K_{eq}:4.5273$\vspace{3pt} \\
+$K_m^{2PG}$: 0.1 mM\vspace{3pt} \\
+$K_m^{pep}:--$\vspace{3pt} \\
+$k_{cat}:--$
+}
+&
+\href{https://ecocyc.org/gene?orgid=ECOLI&id=ENOLASE-MONOMER#RXNS}{EcoCyc: EG10258}
+\\
+
+\end{longtable}
+
+\begin{longtable}{lrrrrl}
+\caption{Values of the 37 kinetic parameters in the literature model, after the initial estimation (all parameters free), after the structural phase (29 free) and in the final model (14 free). Fixed parameters keep the value estimated when they were fixed. Status: free in the final model, or the rule that fixed the parameter (practical iteration in parentheses). $^\dagger$No reported value; a sampled value was used as the literature value.}
+\label{tab:param_evolution}\\
+\toprule
+Parameter & Literature & Initial estimation & Structural phase & Final model & Status \\
+\midrule
+\endfirsthead
+\toprule
+Parameter & Literature & Initial estimation & Structural phase & Final model & Status \\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+$v_{\max}^{1}$ & 25.7 & 13.0 & 80.3 & 80.3 & free \\
+$K_{a1}^{1}$ & 1.00 & $7.90 \times 10^{-3}$ & 0.0885 & 0.0885 & rank of $\mathbf{F}$ (it. 3) \\
+$K_{a2}^{1}$ & 0.0100 & 0.111 & 0.968 & 0.968 & rank of $\mathbf{F}$ (it. 12) \\
+$K_{a3}^{1}$ & 1.00 & 0.0485 & 0.719 & 0.719 & rank of $\mathbf{F}$ (it. 6) \\
+$K_{\mathrm{g6p}}^{1}$ & 0.500 & 2.82 & 10.0 & 10.0 & rank of $\mathbf{F}$ (it. 4) \\
+$K_{s,\mathrm{g6p}}^{2}$ & 1.02 & $1.66 \times 10^{-3}$ & $5.03 \times 10^{-3}$ & $5.03 \times 10^{-3}$ & free \\
+$K_{p,\mathrm{f6p}}^{2}$ & 0.0780 & 2.73 & 10.4 & 10.4 & rank of $\mathbf{F}$ (it. 7) \\
+$k_{\mathrm{cat}}^{2}$ & 21.8$^\dagger$ & 127 & 978 & 978 & free \\
+$K_{s,\mathrm{f6p}}^{3}$ & 0.0130 & 0.972 & 0.972 & 0.972 & structural zero \\
+$K_{s,\mathrm{atp}}^{3}$ & 0.0200 & $1.97 \times 10^{-3}$ & $1.89 \times 10^{-3}$ & $1.89 \times 10^{-3}$ & rank of $\mathbf{F}$ (it. 14) \\
+$K_{p,\mathrm{fbp}}^{3}$ & 0.140 & $2.10 \times 10^{-3}$ & $2.10 \times 10^{-3}$ & $2.10 \times 10^{-3}$ & structural zero \\
+$K_{p,\mathrm{adp}}^{3}$ & 0.163$^\dagger$ & $2.10 \times 10^{-3}$ & $1.92 \times 10^{-3}$ & $1.92 \times 10^{-3}$ & correlation with $k_{\mathrm{cat}}^{3}$ (it. 15) \\
+$k_{\mathrm{cat}}^{3}$ & 7.37$^\dagger$ & 996 & 974 & 974 & free \\
+$K_{s,\mathrm{fbp}}^{4}$ & 0.240 & $1.00 \times 10^{-3}$ & $1.00 \times 10^{-3}$ & $1.00 \times 10^{-3}$ & free \\
+$K_{p,\mathrm{g3p}}^{4}$ & 1.70$^\dagger$ & 5.54 & 5.54 & 5.54 & structural zero \\
+$K_{p,\mathrm{dhap}}^{4}$ & 0.830$^\dagger$ & 2.77 & 10.0 & 10.0 & rank of $\mathbf{F}$ (it. 8) \\
+$k_{\mathrm{cat}}^{4}$ & 0.950 & 2.65 & 2.70 & 2.70 & free \\
+$k_{\mathrm{cat}}^{5}$ & 1200 & 159 & 6870 & 6870 & free \\
+$K_{s,\mathrm{dhap}}^{5}$ & 1.03 & $1.16 \times 10^{-3}$ & 0.0489 & 0.0489 & rank of $\mathbf{F}$ (it. 13) \\
+$K_{p,\mathrm{g3p}}^{5}$ & 0.197$^\dagger$ & 2.85 & 10.0 & 10.0 & rank of $\mathbf{F}$ (it. 2) \\
+$k_{\mathrm{cat}}^{6}$ & 77.6$^\dagger$ & 7.67 & 623 & 623 & free \\
+$K_{s,\mathrm{g3p}}^{6}$ & 0.890 & $5.01 \times 10^{-3}$ & $5.01 \times 10^{-3}$ & $5.01 \times 10^{-3}$ & structural zero \\
+$K_{s,\mathrm{pi}}^{6}$ & 0.530 & 3.15 & 9.99 & 9.99 & rank of $\mathbf{F}$ (it. 10) \\
+$K_{s,\mathrm{nad}}^{6}$ & 0.0450 & $5.01 \times 10^{-3}$ & $5.01 \times 10^{-3}$ & $5.01 \times 10^{-3}$ & structural zero \\
+$K_{p,\mathrm{pgp}}^{6}$ & 2.37$^\dagger$ & 2.85 & 2.85 & 2.85 & structural zero \\
+$K_{p,\mathrm{nadh}}^{6}$ & 2.18$^\dagger$ & 3.00 & 10.0 & 10.0 & rank of $\mathbf{F}$ (it. 1) \\
+$k_{\mathrm{cat}}^{7}$ & 23.9$^\dagger$ & 86.3 & 876 & 876 & free \\
+$K_{s,\mathrm{pgp}}^{7}$ & 0.738$^\dagger$ & $1.24 \times 10^{-3}$ & $1.24 \times 10^{-3}$ & $1.24 \times 10^{-3}$ & structural zero \\
+$K_{s,\mathrm{adp}}^{7}$ & 0.710$^\dagger$ & $1.24 \times 10^{-3}$ & 0.0147 & 0.0147 & free \\
+$K_{p,\mathrm{3pg}}^{7}$ & 0.792$^\dagger$ & 3.65 & 3.65 & 3.65 & structural zero \\
+$K_{p,\mathrm{atp}}^{7}$ & 0.632$^\dagger$ & 2.86 & 10.1 & 10.1 & rank of $\mathbf{F}$ (it. 5) \\
+$k_{\mathrm{cat}}^{8}$ & 41.6 & 307 & 652 & 652 & free \\
+$K_{s,\mathrm{3pg}}^{8}$ & 0.200 & $3.86 \times 10^{-3}$ & 0.101 & 0.101 & free \\
+$K_{p,\mathrm{2pg}}^{8}$ & 0.190 & 2.79 & 10.0 & 10.0 & rank of $\mathbf{F}$ (it. 9) \\
+$k_{\mathrm{cat}}^{9}$ & 48.8$^\dagger$ & 6.88 & 6.71 & 6.71 & free \\
+$K_{s,\mathrm{2pg}}^{9}$ & 0.100 & $1.03 \times 10^{-3}$ & $1.05 \times 10^{-3}$ & $1.05 \times 10^{-3}$ & free \\
+$K_{p,\mathrm{pep}}^{9}$ & 1.51$^\dagger$ & 3.03 & 9.96 & 9.96 & rank of $\mathbf{F}$ (it. 11) \\
+\end{longtable}
+
+\begin{table}[h]
+\centering
+\caption{Free parameters of the final model, with the verdict of each uncertainty analysis: estimate, bootstrap 95\% percentile interval, the ratio of its ends and the bootstrap verdict (practically identifiable if the ratio is at most 10 and the interval does not reach a parameter bound), and the class of the profile likelihood from $\hat\theta/10$ to $10\,\hat\theta$ (an arm crosses where it exceeds the threshold and stays above it farther out; identifiable: both arms cross within a factor 10 in total; wide: both cross, farther apart; one-sided: one arm; flat: none). Near-optimal: 95\% percentile interval of every bootstrap fit within the likelihood-ratio threshold of the best fit of its resample. Both: the sides on which the two analyses bound the parameter together, a side being bounded when the profile crosses the threshold on it and the bootstrap interval does not reach the parameter bound there (identifiable: both sides, and identifiable by each analysis; wide: both sides, farther apart; bounded below or above: one side only, so the data constrain the parameter from that side and further data are needed to bound the other; not identifiable: neither side). $^\ddagger$The interval reaches a parameter bound.}
+\label{tab:free_parameters}
+\begin{tabular}{lrrrrlll}
+\toprule
+Parameter & Estimate & Bootstrap 95\% interval & Ratio & Near-optimal interval & Bootstrap & Profile & Both \\
+\midrule
+$v_{\max}^{1}$ & 80.3 & 72.2 -- 99.8$^\ddagger$ & 1.38 & 66.7 -- 99.9 & not identifiable & one-sided & bounded below \\
+$K_{s,\mathrm{g6p}}^{2}$ & $5.03 \times 10^{-3}$ & $1.01 \times 10^{-3}$ -- 3.77 & 3730 & $1.01 \times 10^{-3}$ -- 2.87 & not identifiable & flat & not identifiable \\
+$k_{\mathrm{cat}}^{2}$ & 978 & 461 -- 1000$^\ddagger$ & 2.17 & 512 -- 1000 & not identifiable & one-sided & bounded below \\
+$k_{\mathrm{cat}}^{3}$ & 974 & 700 -- 1000$^\ddagger$ & 1.43 & 747 -- 1000 & not identifiable & one-sided & bounded below \\
+$K_{s,\mathrm{fbp}}^{4}$ & $1.00 \times 10^{-3}$ & $1.00 \times 10^{-3}$ -- $1.02 \times 10^{-3}$$^\ddagger$ & 1.02 & $1.00 \times 10^{-3}$ -- $1.01 \times 10^{-3}$ & not identifiable & one-sided & bounded above \\
+$k_{\mathrm{cat}}^{4}$ & 2.70 & 2.44 -- 3.26 & 1.33 & 2.48 -- 3.09 & practically identifiable & identifiable & identifiable \\
+$k_{\mathrm{cat}}^{5}$ & 6870 & 3970 -- 9900$^\ddagger$ & 2.49 & 1890 -- $1.00 \times 10^{4}$ & not identifiable & flat & not identifiable \\
+$k_{\mathrm{cat}}^{6}$ & 623 & 192 -- 883 & 4.59 & 146 -- 822 & practically identifiable & one-sided & bounded above \\
+$k_{\mathrm{cat}}^{7}$ & 876 & 689 -- 1000$^\ddagger$ & 1.45 & 390 -- 1000 & not identifiable & one-sided & bounded below \\
+$K_{s,\mathrm{adp}}^{7}$ & 0.0147 & $1.02 \times 10^{-3}$ -- 0.295 & 290 & $1.01 \times 10^{-3}$ -- 0.244 & not identifiable & flat & not identifiable \\
+$k_{\mathrm{cat}}^{8}$ & 652 & 251 -- 944 & 3.77 & 251 -- 971 & practically identifiable & one-sided & bounded below \\
+$K_{s,\mathrm{3pg}}^{8}$ & 0.101 & $1.10 \times 10^{-3}$ -- 1.60 & 1450 & $1.07 \times 10^{-3}$ -- 1.08 & not identifiable & flat & not identifiable \\
+$k_{\mathrm{cat}}^{9}$ & 6.71 & 5.21 -- 661 & 127 & 5.26 -- 40.8 & not identifiable & identifiable & wide \\
+$K_{s,\mathrm{2pg}}^{9}$ & $1.05 \times 10^{-3}$ & $1.00 \times 10^{-3}$ -- 0.234$^\ddagger$ & 233 & $1.00 \times 10^{-3}$ -- 0.0950 & not identifiable & one-sided & bounded above \\
+\bottomrule
+\end{tabular}
+\end{table}

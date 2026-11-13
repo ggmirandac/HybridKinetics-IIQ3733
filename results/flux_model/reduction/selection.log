@@ -1,0 +1,74 @@
+[     0s] selection from 37 free, obj 11.74551
+[     0s]   FIXED     Ks_nad_6     rule structural_zero loading -0.545 partner - r - value 0.005013
+[     0s]   FIXED     Ks_pgp_7     rule structural_zero loading -0.684 partner - r - value 0.001241
+[     0s]   FIXED     Kp_pgp_6     rule structural_zero loading 0.707 partner - r - value 2.85
+[     0s]   FIXED     Ks_3pg_7     rule structural_zero loading 0.701 partner - r - value 3.654
+[     0s]   FIXED     Ks_g3p_6     rule structural_zero loading 0.660 partner - r - value 0.005013
+[     0s]   FIXED     Kp_fbp_3     rule structural_zero loading -0.617 partner - r - value 0.002101
+[     0s]   FIXED     Kp_g3p_4     rule structural_zero loading 0.707 partner - r - value 5.539
+[     0s]   FIXED     Ks_f6p_3     rule structural_zero loading 0.707 partner - r - value 0.9724
+[     0s] structural step: 8 fixed ['Ks_nad_6', 'Ks_pgp_7', 'Kp_pgp_6', 'Ks_3pg_7', 'Ks_g3p_6', 'Kp_fbp_3', 'Kp_g3p_4', 'Ks_f6p_3'], 0 kept free by design []
+[     9s]   refit: 29 free, obj 11.74551 -> 10.90867
+[    11s] iteration 1: 29 free (29 analysed), obj 10.90867, sigma_min/max 1.72e-16, max|r| nan
+[    17s]     refit obj 10.997144 above the previous fit 10.908666: previous fit kept
+[    17s]   FIXED     Kp_nadh_6    rule svd        loading -1.000 partner - r - value 10
+[    17s]   refit: 28 free, obj 10.90867
+[    18s] iteration 2: 28 free (28 analysed), obj 10.90867, sigma_min/max 1.08e-11, max|r| nan
+[    22s]     refit obj 11.011244 above the previous fit 10.908666: previous fit kept
+[    22s]   FIXED     Kp_g3p_5     rule svd        loading -1.000 partner - r - value 10
+[    22s]   refit: 27 free, obj 10.90867
+[    24s] iteration 3: 27 free (27 analysed), obj 10.90867, sigma_min/max 1.97e-10, max|r| nan
+[    26s]     refit obj 11.027851 above the previous fit 10.908666: previous fit kept
+[    26s]   FIXED     Ka1_1        rule svd        loading -0.588 partner - r - value 0.08853
+[    26s]   refit: 26 free, obj 10.90867
+[    28s] iteration 4: 26 free (26 analysed), obj 10.90867, sigma_min/max 3.12e-10, max|r| nan
+[    40s]     refit obj 10.953318 above the previous fit 10.908666: previous fit kept
+[    40s]   FIXED     K_g6p_1      rule svd        loading -1.000 partner - r - value 10
+[    40s]   refit: 25 free, obj 10.90867
+[    42s] iteration 5: 25 free (25 analysed), obj 10.90867, sigma_min/max 5.77e-09, max|r| nan
+[    46s]     refit obj 10.986462 above the previous fit 10.908666: previous fit kept
+[    46s]   FIXED     Ks_atp_7     rule svd        loading 1.000 partner - r - value 10.09
+[    46s]   refit: 24 free, obj 10.90867
+[    48s] iteration 6: 24 free (24 analysed), obj 10.90867, sigma_min/max 8.85e-09, max|r| nan
+[    53s]     refit obj 10.998428 above the previous fit 10.908666: previous fit kept
+[    53s]   FIXED     Ka3_1        rule svd        loading -0.778 partner - r - value 0.7186
+[    53s]   refit: 23 free, obj 10.90867
+[    55s] iteration 7: 23 free (23 analysed), obj 10.90867, sigma_min/max 1.00e-08, max|r| nan
+[    60s]     refit obj 11.009107 above the previous fit 10.908666: previous fit kept
+[    60s]   FIXED     Kp_f6p_pgi   rule svd        loading -1.000 partner - r - value 10.37
+[    60s]   refit: 22 free, obj 10.90867
+[    61s] iteration 8: 22 free (22 analysed), obj 10.90867, sigma_min/max 5.81e-08, max|r| nan
+[    63s]     refit failed (Solver failed to return an optimal solution. Solution status: error, Termination condition: internal): previous fit kept
+[    63s]   FIXED     Kp_dhap_4    rule svd        loading -1.000 partner - r - value 10
+[    63s]   refit: 21 free, obj 10.90867
+[    64s] iteration 9: 21 free (21 analysed), obj 10.90867, sigma_min/max 2.03e-07, max|r| nan
+[    68s]     refit obj 10.999638 above the previous fit 10.908666: previous fit kept
+[    68s]   FIXED     Ks_2pg_8     rule svd        loading 1.000 partner - r - value 9.995
+[    68s]   refit: 20 free, obj 10.90867
+[    70s] iteration 10: 20 free (20 analysed), obj 10.90867, sigma_min/max 4.33e-07, max|r| nan
+[    74s]     refit obj 10.948132 above the previous fit 10.908666: previous fit kept
+[    74s]   FIXED     Ks_pi_6      rule svd        loading -1.000 partner - r - value 9.988
+[    74s]   refit: 19 free, obj 10.90867
+[    76s] iteration 11: 19 free (19 analysed), obj 10.90867, sigma_min/max 5.75e-06, max|r| nan
+[    79s]     refit obj 10.956820 above the previous fit 10.908666: previous fit kept
+[    79s]   FIXED     Ks_pep_9     rule svd        loading -1.000 partner - r - value 9.963
+[    79s]   refit: 18 free, obj 10.90867
+[    81s] iteration 12: 18 free (18 analysed), obj 10.90867, sigma_min/max 1.57e-05, max|r| nan
+[    85s]     refit obj 10.996340 above the previous fit 10.908666: previous fit kept
+[    85s]   FIXED     Ka2_1        rule svd        loading -0.961 partner - r - value 0.9682
+[    85s]   refit: 17 free, obj 10.90867
+[    86s] iteration 13: 17 free (17 analysed), obj 10.90867, sigma_min/max 3.93e-05, max|r| nan
+[    89s]     refit obj 10.995396 above the previous fit 10.908666: previous fit kept
+[    89s]   FIXED     Ks_dhap_5    rule svd        loading -0.664 partner - r - value 0.0489
+[    89s]   refit: 16 free, obj 10.90867
+[    91s] iteration 14: 16 free (16 analysed), obj 10.90867, sigma_min/max 4.29e-05, max|r| nan
+[    95s]     refit obj 10.950358 above the previous fit 10.908666: previous fit kept
+[    95s]   FIXED     Ks_atp_3     rule svd        loading -0.710 partner - r - value 0.001886
+[    95s]   refit: 15 free, obj 10.90867
+[    97s] iteration 15: 15 free (15 analysed), obj 10.90867, sigma_min/max 1.17e-04, max|r| 1.000
+[   100s]     refit obj 10.964560 above the previous fit 10.908666: previous fit kept
+[   100s]   FIXED     Kp_adp_3     rule correlation loading - partner kcat_f_3 r -1.000 value 0.001915
+[   100s]   refit: 14 free, obj 10.90867
+[   102s] iteration 16: 14 free (14 analysed), obj 10.90867, sigma_min/max 1.17e-04, max|r| 0.897
+[   102s]   the free set is identifiable
+[   102s] selection finished: 14 free ['v_max_1', 'Ks_g6p_pgi', 'kcat_f_2', 'kcat_f_3', 'Ks_fbp_4', 'kcat_f_4', 'kcat_f_5', 'kcat_f_6', 'kcat_f_7', 'Ks_adp_7', 'kcat_f_8', 'Ks_3pg_8', 'kcat_f_9', 'Ks_2pg_9']; kept free by design []; obj 10.908666

@@ -1,0 +1,23 @@
+{
+ "n_free": 37,
+ "obj": 11.74548297338328,
+ "s2": 2.93637074334582,
+ "multistart_best_table": 12.324419232001281,
+ "multistart_n_converged": 47,
+ "multistart_n_total": 51,
+ "multistart_median": 76.07933886132876,
+ "b_rmse_vs_data": 0.49051359043334114,
+ "n_drains_at_bound": 8,
+ "theta_at_bounds": "kcat_f_3;Ks_fbp_4",
+ "n_pred_failed": 0,
+ "rmse_met": 0.12067453352421131,
+ "r2_met_pooled": 0.6054040922309217,
+ "r2_met_permean": 0.4134451894234622,
+ "rmse_met_meanbaseline": 0.15756557121136422,
+ "n_met": 103,
+ "rmse_flux_li": 0.4118943040236502,
+ "r2_flux_li_pooled": 0.9183268474168078,
+ "r2_flux_li_permean": 0.6790436239131173,
+ "rmse_flux_li_meanbaseline": 0.7270474948875858,
+ "n_flux_li": 110
+}

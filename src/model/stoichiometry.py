@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from paths import DATA_DIR
-from model.parameters import BALANCED_KEYS, BALANCED_NAMES, RXN_ORDER, LEGACY_ROW_ORDER
+from model.parameters import BALANCED_KEYS, BALANCED_NAMES, RXN_ORDER, ALPHABETICAL_ROW_ORDER
 
 def load_keq():
     """Equilibrium constants {reaction: float} (eQuilibrator, pH 7, ionic strength 0.1 M, 37 C)."""
@@ -29,7 +29,7 @@ def stoichiometric_table(balanced_keys=BALANCED_KEYS):
     """
     The 9x9 stoichiometric matrix (metabolites x reactions) as a DataFrame.  Rows: ``balanced_keys`` order (default
     g6p, f6p, fbp, dhap, g3p, pgp, 3pg, 2pg, pep); columns: RXN_ORDER.  The table is written below in the
-    alphabetical row order of the original code (LEGACY_ROW_ORDER) and reindexed at the end.
+    alphabetical row order in which the stoichiometric table is built (ALPHABETICAL_ROW_ORDER) and reindexed at the end.
     """
     matrix = np.array([
         # pts  pgi  pfk  fba  tpi  gap  pgk  gpm  eno
@@ -43,7 +43,7 @@ def stoichiometric_table(balanced_keys=BALANCED_KEYS):
         [-1,   0,   0,   0,   0,   0,   0,   0,   1],  # pep
         [0,    0,   0,   0,   0,   1,  -1,   0,   0],  # pgp
     ])
-    table = pd.DataFrame(matrix, index=LEGACY_ROW_ORDER, columns=RXN_ORDER)
+    table = pd.DataFrame(matrix, index=ALPHABETICAL_ROW_ORDER, columns=RXN_ORDER)
     rows = [key[2:] for key in balanced_keys]
     return table.loc[rows]
 

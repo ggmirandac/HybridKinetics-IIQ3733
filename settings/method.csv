@@ -1,0 +1,19 @@
+name,value,type,description
+n_starts,50,int,stage 0: random starts of the multistart (all parameters free; log-uniform in the parameter bounds)
+seed,0,int,seed of every random draw (multistart starts; structural realizations; bootstrap resamples)
+structural_q,10,int,structural identifiability: number of random parameter vectors (Stigter and Molenaar 2015)
+structural_tol,1e-10,float,structural identifiability: a singular value below this fraction of the largest is a structural zero
+rank_tol,1e-4,float,practical identifiability: a singular value of the weighted sensitivity matrix below this fraction of the largest makes the Fisher information rank deficient
+corr_threshold,0.9,float,practical identifiability: parameter pairs with |r| above this are correlated
+lr_alpha,0.95,float,confidence level of the likelihood-ratio threshold (profile likelihood)
+bootstrap_n,5000,int,number of case-bootstrap resamples (conditions drawn with replacement)
+bootstrap_ci_ratio,10.0,float,bootstrap: a parameter is practically identifiable if the ratio of its 97.5 and 2.5 percentiles is at most this
+bootstrap_local_starts,5,int,bootstrap: local starts per resample besides the warm start (free parameters at the estimate times 10**U(-span; span)); the best fit is kept; 0 = warm start only
+bootstrap_local_span,1.0,float,bootstrap: decades on each side of the estimate covered by the local starts
+profile_points,30,int,profile likelihood: points on each side of the estimate
+profile_span,1.0,float,profile likelihood: decades covered on each side of the estimate
+profile_extra_starts,3,int,profile likelihood: extra starts per point besides the warm continuation (other free parameters at the previous point times 10**U(-span; span)); the best fit is kept
+profile_extra_span,1.0,float,profile likelihood: decades on each side of the previous point covered by the extra starts
+bootstrap_profile_seeds,3,int,bootstrap: starts per resample drawn at random from the profile points within the likelihood-ratio threshold (full theta of the point)
+n_jobs,10,int,worker processes (multistart; bootstrap; profiles; LOOCV)
+out_dir,results/flux_model,str,default output directory (relative to the repo root)

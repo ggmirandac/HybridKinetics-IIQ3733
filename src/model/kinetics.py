@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import casadi as ca
 
-from settings import CASADI_OPTIONS
+from settings import CLOSURE_OPTIONS
 from model.parameters import ALL_PARAMS, BALANCED_KEYS, IMBALANCED_KEYS, ENZYME_KEYS, FLUX_KEYS, RXN_ORDER
 from model.stoichiometry import load_keq, stoichiometric_table
 
@@ -106,8 +106,7 @@ class GlycolysisRateLaws:
         Enzyme   : PfkB
 
         Noor formulation -- thermodynamic driving force via gamma.
-        Allosteric modifiers (original formulation) removed; directionality
-        is now encoded entirely in dGr.
+        No allosteric modifiers; the directionality is encoded entirely in the driving force gamma.
 
         constants keys : Ks_f6p_3, Ks_atp_3, Kp_fbp_3, Kp_adp_3, kcat_f_3
         C keys         : C_f6p, C_atp, C_fbp, C_adp
@@ -142,7 +141,7 @@ class GlycolysisRateLaws:
         Enzyme   : FbaA
 
         Noor formulation -- thermodynamic driving force via gamma.
-        Allosteric modifiers (original formulation) removed.
+        No allosteric modifiers.
 
         constants keys : Ks_fbp_4, Kp_g3p_4, Kp_dhap_4, kcat_f_4
         C keys         : C_fbp, C_g3p, C_dhap
@@ -206,7 +205,7 @@ class GlycolysisRateLaws:
         Enzyme   : GapA
 
         Noor formulation -- thermodynamic driving force via gamma.
-        Allosteric inhibitors (ADP, AMP, ATP) removed from original formulation.
+        No allosteric inhibitors (ADP, AMP, ATP).
 
         constants keys : kcat_f_6, Ks_g3p_6, Ks_pi_6, Ks_nad_6, Kp_pgp_6, Kp_nadh_6
         C keys         : C_g3p, C_pi, C_nad, C_pgp, C_nadh
@@ -243,8 +242,7 @@ class GlycolysisRateLaws:
         Enzyme   : Pgk
 
         Noor formulation -- thermodynamic driving force via gamma.
-        Product-activation terms (original formulation) removed; directionality
-        is now encoded entirely in dGr.
+        No product-activation terms; the directionality is encoded entirely in the driving force gamma.
 
         constants keys : kcat_f_7, Ks_pgp_7, Ks_adp_7, Ks_3pg_7, Ks_atp_7
         C keys         : C_pgp, C_adp, C_3pg, C_atp
@@ -279,7 +277,7 @@ class GlycolysisRateLaws:
         Enzyme   : GpmA
 
         Noor formulation -- thermodynamic driving force via gamma.
-        Phosphate inhibition (original formulation) removed.
+        No phosphate inhibition.
 
         constants keys : kcat_f_8, Ks_3pg_8, Ks_2pg_8
         C keys         : C_3pg, C_2pg
@@ -358,7 +356,7 @@ class EcoliCarbonKinetics(GlycolysisRateLaws):
             upper.append(bounds_imbalanced_mets[key][1])
         self.lower = np.array(lower)
         self.upper = np.array(upper)
-        self.casadi_options = {"ipopt": dict(CASADI_OPTIONS), "print_time": 0}
+        self.casadi_options = {"ipopt": dict(CLOSURE_OPTIONS), "print_time": 0}
         # Built at the first closure solve: compiling the NLP is the slow part and most callers never need it
         self.closure_solver = None
         self.closure_rates = None

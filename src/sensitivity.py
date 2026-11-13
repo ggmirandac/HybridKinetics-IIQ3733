@@ -1,65 +1,54 @@
 """
-sensitivity.py -- reduced (profiled) sensitivities of the measured outputs.
+sensitivity.py -- reduced sensitivities of the measured outputs by the implicit function theorem (CasADi).
 
-For each condition the inner problem min_{x, u, b} weighted SSE is solved with ALL kinetic parameters fixed at theta;
-y*(theta) are the model values of the measured outputs at that optimum.  This is the problem that is actually
-estimated: the free cofactors and drains absorb part of every parameter change, which sensitivities at fixed
-(x, u, b) would miss.  The reduced sensitivities dy*/dtheta are finite differences in ln theta with
-  - forward / backward consistency checks (an inconsistent pair is re-solved, then the smaller one-sided value is
-    used: never invented information),
-  - one-sided steps at the theta bounds (flag at_bound),
-  - a column check at a second step (flag fd_unstable),
-  - NaN entries counted and never set to zero (flag fd_failed for NaN in more than 2 conditions).
-The solves are parallelised over (parameter, step) with a process pool.
+For each condition the inner problem
+    min_w  phi(w, theta) = 1/2 sum_k ((y_k - h_k(w, theta)) / sigma_k)^2   s.t.  F(w, theta) = S v - b = 0,  lo <= w <= hi
+is solved once at theta (w = balanced metabolites x, free cofactors u, free drains b).  y*(theta) = h(w*(theta), theta)
+are the model values of the measured outputs at that optimum: the free cofactors and drains absorb part of every
+parameter change, so these are the sensitivities of the problem that is actually estimated.  At the solution the
+variables on a bound stay fixed and the others (I) satisfy the optimality conditions
+    grad_I phi + A_I^T lam = 0,   F = 0,          A_I = dF / dw_I.
+Differentiating them with respect to theta gives one linear system per condition (the KKT matrix):
+    [ H_II  A_I^T ] [ dw_I / dtheta  ]     [ d grad_I L / dtheta ]
+    [ A_I   0     ] [ dlam / dtheta  ] = - [ dF / dtheta         ],     L = phi + lam^T F,  H = d2 L / dw2,
+and dy* / dtheta = dh / dw_I dw_I / dtheta + dh / dtheta.  It is solved in its null-space form (reduced Hessian), which
+is better conditioned than the full KKT matrix.  CasADi builds the rate laws of model/kinetics.py as symbols, so every
+derivative is exact (automatic differentiation): there is no step size.
 
 Position in the pipeline: input of the practical identifiability analysis (identifiability/practical.py) in every
-iteration of the parameter selection; also the sensitivity heatmap of the paper figures.
+iteration of the parameter selection, and of the sensitivity figure.
 """
 import warnings
-from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 import pandas as pd
-
+import casadi as ca
 import pyomo.environ as pyo
 
-from settings import TIGHT_OPTIONS
+from settings import WARM_START_OPTIONS
 from solver import check_solver
-from model.parameters import ALL_PARAMS
+from model.kinetics import GlycolysisRateLaws
+from model.parameters import ALL_PARAMS, BALANCED_KEYS, IMBALANCED_KEYS, ENZYME_KEYS, FLUX_KEYS, FREE_DRAIN_KEYS
+from data import load_condition
 from estimation.experiment import GlycolysisExperiment
 
-INNER_BASE = {"print_level": 0, "max_iter": 10000}
-
-# Every inner solve starts at the FITTED primal point with the tight monotone warm start, so all solves stay in one
-# basin: the adaptive barrier update of the default options switches branches between neighbouring solves, which
-# showed up as huge finite-difference artefacts.  No single barrier start works for every condition (the inner
-# problems are ill-conditioned: KO05 only converges from mu_init ~1e-3, KO08 / KO20 from 1e-7), so each solve walks a
-# fixed LADDER of option sets, in order, until one terminates optimal.  Ladder 0 is the primary one, ladder 1
-# (tighter) re-solves failed entries and inconsistent forward / backward pairs.
-PRIMARY_LADDER = [
-    {**TIGHT_OPTIONS, **INNER_BASE, "tol": 1e-8, "acceptable_tol": 1e-8, "mu_init": 1e-9},
-    {**TIGHT_OPTIONS, **INNER_BASE, "tol": 1e-8, "acceptable_tol": 1e-8, "mu_init": 1e-7},
-    {**TIGHT_OPTIONS, **INNER_BASE, "tol": 1e-8, "acceptable_tol": 1e-8, "mu_init": 1e-3},
-    {**INNER_BASE, "warm_start_init_point": "yes", "mu_strategy": "adaptive", "tol": 1e-8, "acceptable_tol": 1e-8},
-]
-RESOLVE_LADDER = [
-    {**TIGHT_OPTIONS, **INNER_BASE, "max_iter": 20000, "tol": 1e-9, "acceptable_tol": 1e-9, "acceptable_iter": 30,
-     "mu_init": 1e-11},
-    {**TIGHT_OPTIONS, **INNER_BASE, "max_iter": 20000, "tol": 1e-9, "acceptable_tol": 1e-9, "acceptable_iter": 30,
-     "mu_init": 1e-8},
-    {**TIGHT_OPTIONS, **INNER_BASE, "max_iter": 20000, "tol": 1e-9, "acceptable_tol": 1e-9, "acceptable_iter": 30,
-     "mu_init": 1e-4},
-    {**INNER_BASE, "max_iter": 20000, "warm_start_init_point": "yes", "mu_strategy": "adaptive", "tol": 1e-9,
-     "acceptable_tol": 1e-9},
-]
-LADDERS = (PRIMARY_LADDER, RESOLVE_LADDER)
+# The inner problems are solved from the fitted point with the warm-start options of the estimation and a tight
+# complementarity tolerance, so that the variables of an active bound sit on it (the default of IPOPT leaves them up
+# to 1e-3 away); a variable within ACTIVE_RTOL of a bound is then on the bound.
+INNER_OPTIONS = {**WARM_START_OPTIONS, "compl_inf_tol": 1e-10, "max_iter": 10000}
+ACTIVE_RTOL = 1e-5
+# The stationarity residual of an optimal solve, relative to the size of the objective gradient (scaled variables)
+STATIONARITY_RTOL = 1e-4
+# Eigenvalues of the reduced Hessian below this fraction of the largest are numerically zero: exactly flat
+# directions of w (they leave the outputs unchanged and are dropped).  The inner problems are nearly degenerate
+# (eigenvalue ratios down to ~1e-10 that do move the outputs), so the cut sits at the level of rounding errors.
+FLAT_RCOND = 1e-14
 
 class InnerProblems:
-    """The inner problems (all theta fixed, objective = weighted SSE) of every condition, re-solvable at any theta."""
+    """The inner problems (all theta fixed, objective = weighted SSE) of every condition, started at the fit."""
 
-    def __init__(self, setup, conditions, theta_full, primal, solver_options):
+    def __init__(self, setup, conditions, theta_full, primal):
         self.solver = pyo.SolverFactory("ipopt")
-        self.base_options = dict(solver_options)
         x_init, u_init, b_init = primal
         self.models = {}
         for condition in conditions:
@@ -79,314 +68,176 @@ class InnerProblems:
                 "sigma": np.array([float(model.measurement_error[c]) for c in outputs]),
                 "free_vars": free_vars, "start": [float(pyo.value(v)) for v in free_vars]}
 
-    def solve(self, condition, ladder):
-        """Optimal outputs of one condition at the current theta (NaN if no option set of the ladder converges)."""
+    def solve(self, condition):
+        """Solve the inner problem of one condition from the fitted point; True if IPOPT terminates optimal."""
         record = self.models[condition]
-        for options in ladder:
-            for name, value in {**self.base_options, **options}.items():
-                self.solver.options[name] = value
-            for variable, start in zip(record["free_vars"], record["start"]):
-                variable.set_value(start)
-            try:
-                result = self.solver.solve(record["model"], tee=False)
-            except Exception:   # noqa: BLE001  (an IPOPT error at one rung: try the next options)
-                continue
-            if str(result.solver.termination_condition) == "optimal":
-                return np.array([float(pyo.value(c)) for c in record["outputs"]])
-        return np.full(len(record["outputs"]), np.nan)
+        for name, value in INNER_OPTIONS.items():
+            self.solver.options[name] = value
+        for variable, start in zip(record["free_vars"], record["start"]):
+            variable.set_value(start)
+        result = self.solver.solve(record["model"], tee=False, load_solutions=False)
+        if str(result.solver.termination_condition) != "optimal":
+            return False
+        record["model"].solutions.load_from(result)
+        return True
 
-    def outputs(self, theta_full, conditions=None, family=0):
-        """{condition: optimal outputs} at ``theta_full`` (``conditions``: only these; ``family``: which ladder)."""
-        result = {}
-        for condition, record in self.models.items():
-            if conditions is not None and condition not in conditions:
-                continue
-            for key in ALL_PARAMS:
-                getattr(record["model"], key).set_value(float(theta_full[key]))
-            result[condition] = self.solve(condition, LADDERS[family])
-        return result
-
-def perturbed_theta(theta_full, param, step):
-    """theta with ``param`` multiplied by exp(step) (param None: theta itself)."""
-    theta = dict(theta_full)
-    if param is not None:
-        theta[param] = theta[param] * float(np.exp(step))
-    return theta
-
-# The inner problems and the base theta of a worker process, built once by start_worker
-WORKER_PROBLEMS = None
-WORKER_THETA = None
-
-def start_worker(setup, conditions, theta_full, primal, solver_options):
-    global WORKER_PROBLEMS, WORKER_THETA
-    WORKER_PROBLEMS = InnerProblems(setup, conditions, theta_full, primal, solver_options)
-    WORKER_THETA = dict(theta_full)
-
-def solve_task(task):
-    """task = (param or None, step, ladder family, conditions or None): the outputs at theta[param] * exp(step)."""
-    param, step, family, conditions = task
-    theta = perturbed_theta(WORKER_THETA, param, step)
-    return task, WORKER_PROBLEMS.outputs(theta, conditions=conditions, family=family)
-
-class TaskRunner:
-    """Runs solve tasks in this process (n_jobs = 1) or in a process pool that is reused by every batch."""
-
-    def __init__(self, problems, setup, conditions, theta_full, primal, solver_options, n_jobs):
-        self.problems = problems
-        self.theta_full = theta_full
-        self.pool = None
-        if n_jobs != 1:
-            self.pool = ProcessPoolExecutor(max_workers=int(n_jobs), initializer=start_worker,
-                                            initargs=(setup, conditions, theta_full, primal, solver_options))
-
-    def run(self, tasks):
-        """[(task, {condition: outputs})] in task order."""
-        if self.pool is not None:
-            return list(self.pool.map(solve_task, tasks))
-        results = []
-        for task in tasks:
-            param, step, family, conditions = task
-            theta = perturbed_theta(self.theta_full, param, step)
-            results.append((task, self.problems.outputs(theta, conditions=conditions, family=family)))
-        return results
-
-    def close(self):
-        if self.pool is not None:
-            self.pool.shutdown()
-
-def step_allowed(theta_full, bounds, param, step):
-    """True if theta[param] * exp(step) stays inside the theta bounds (relative tolerance 1e-12)."""
-    value = float(theta_full[param]) * float(np.exp(step))
-    lower, upper = bounds[param]
-    return (value >= lower * (1.0 - 1e-12)) and (value <= upper * (1.0 + 1e-12))
-
-def retry_failed(results, conditions, runner):
+def symbolic_condition(record, condition, setup, theta_full, param_names):
     """
-    Re-solve once, with the re-solve ladder, every (step, condition) whose solve failed; ``results`` is updated in
-    place.  Returns (number failed in the first pass, number recovered).
+    CasADi function of one condition: (w, k, lam) -> (phi, F, h, grad_w L, dF/dw, dF/dk, d2L/dw2, d2L/dw dk, dh/dw,
+    dh/dk), with w the free variables of the Pyomo model (in its order) and k the parameters ``param_names``.
     """
-    failed_by_key = {}
-    n_failed = 0
-    for key, outputs in results.items():
-        for condition in conditions:
-            if np.isnan(outputs[condition]).any():
-                failed_by_key.setdefault(key, []).append(condition)
-                n_failed += 1
-    tasks = []
-    for (param, step), failed in failed_by_key.items():
-        tasks.append((param, step, 1, tuple(failed)))
-    n_recovered = 0
-    for task, outputs in runner.run(tasks):
-        for condition, values in outputs.items():
-            if not np.isnan(values).any():
-                results[(task[0], task[1])][condition] = values
-                n_recovered += 1
-    return n_failed, n_recovered
+    data = load_condition(condition)
+    model = record["model"]
+    free_names = [variable.local_name for variable in record["free_vars"]]
+    w = ca.SX.sym("w", len(free_names))
+    k = ca.SX.sym("k", len(param_names))
+    lam = ca.SX.sym("lam", len(BALANCED_KEYS))
+    symbols = {}
+    for i, name in enumerate(free_names):
+        symbols[name] = w[i]
+    for key in BALANCED_KEYS + IMBALANCED_KEYS + ["b_" + key for key in FREE_DRAIN_KEYS]:
+        if key not in symbols:
+            symbols[key] = float(getattr(model, key).value)
+    constants = {}
+    for key in ALL_PARAMS:
+        constants[key] = float(theta_full[key])
+    for j, key in enumerate(param_names):
+        constants[key] = k[j]
+    concentrations = {}
+    for key in BALANCED_KEYS + IMBALANCED_KEYS:
+        concentrations[key] = symbols[key]
+    enzymes = {}
+    for key in ENZYME_KEYS:
+        enzymes[key] = float(data["e"][key])
+    rates = GlycolysisRateLaws(setup.keq).compute_fluxes(concentrations, enzymes, constants)
+    for flux_key, rate in zip(FLUX_KEYS, rates):
+        symbols[flux_key] = rate
+    constraints = []
+    for i, key in enumerate(BALANCED_KEYS):
+        rate_sum = 0
+        for j in range(len(FLUX_KEYS)):
+            rate_sum = rate_sum + float(setup.S[i, j]) * rates[j]
+        if key in FREE_DRAIN_KEYS:
+            constraints.append(rate_sum - symbols["b_" + key])
+        else:
+            constraints.append(rate_sum - float(data["b"].get(key, 0.0)))
+    F = ca.vertcat(*constraints)
+    measured = np.array([float(model.experiment_outputs[c]) for c in record["outputs"]])
+    h = ca.vertcat(*[symbols[name] for name in record["names"]])
+    residual = (measured - h) / record["sigma"]
+    phi = 0.5 * ca.sumsqr(residual)
+    lagrangian = phi + ca.dot(lam, F)
+    grad_w = ca.gradient(lagrangian, w)
+    outputs = [phi, F, h, grad_w, ca.jacobian(F, w), ca.jacobian(F, k), ca.jacobian(grad_w, w),
+               ca.jacobian(grad_w, k), ca.jacobian(h, w), ca.jacobian(h, k)]
+    return ca.Function("inner_" + condition, [w, k, lam], outputs)
 
-class Differences:
-    """Forward / backward differences in ln theta of the outputs, from the solves of every step."""
+def active_variables(record, w_star):
+    """Boolean array: the free variable sits on one of its bounds (relative distance ACTIVE_RTOL)."""
+    active = np.zeros(len(w_star), dtype=bool)
+    for i, variable in enumerate(record["free_vars"]):
+        lower, upper = variable.lb, variable.ub
+        if lower is not None and w_star[i] - lower <= ACTIVE_RTOL * max(abs(lower), 1e-9):
+            active[i] = True
+        if upper is not None and upper - w_star[i] <= ACTIVE_RTOL * max(abs(upper), 1e-9):
+            active[i] = True
+    return active
 
-    def __init__(self, results, resolved, sigma, params):
-        self.results = results
-        self.resolved = resolved
-        self.y0 = results[(None, 0.0)]
-        self.sigma = sigma
-        self.rtol = params["fd_consistency_rtol"]
-        self.atol = params["fd_consistency_atol"]
-
-    def pair(self, store, param, condition, step):
-        """(forward, backward) difference in dy / d ln theta at ``step`` (None where a solve is missing or failed)."""
-        y_plus = store.get((param, step), {}).get(condition)
-        y_minus = store.get((param, -step), {}).get(condition)
-        base_ok = not np.isnan(self.y0[condition]).any()
-        forward = None
-        backward = None
-        if y_plus is not None and base_ok and not np.isnan(y_plus).any():
-            forward = (y_plus - self.y0[condition]) / step
-        if y_minus is not None and base_ok and not np.isnan(y_minus).any():
-            backward = (self.y0[condition] - y_minus) / step
-        return forward, backward
-
-    def inconsistent(self, forward, backward, condition):
-        """||D+ - D-|| > rtol max(||D+||, ||D-||) + atol, on the sigma-weighted vectors."""
-        a = forward / self.sigma[condition]
-        b = backward / self.sigma[condition]
-        largest = max(float(np.linalg.norm(a)), float(np.linalg.norm(b)))
-        return float(np.linalg.norm(a - b)) > self.rtol * largest + self.atol
-
-    def entry(self, param, condition, step, store, flagged_pairs):
-        """
-        (dy / d ln theta or None, status): 'ok' (central difference), 'resolved' (consistent after the re-solve),
-        'inconsistent' (the one-sided value of smaller magnitude), 'one_sided' or 'nan'.
-        """
-        forward, backward = self.pair(store, param, condition, step)
-        if forward is not None and backward is not None:
-            if (param, condition) not in flagged_pairs:
-                return 0.5 * (forward + backward), "ok"
-            forward_2, backward_2 = self.pair(self.resolved, param, condition, step)
-            if forward_2 is None:
-                forward_2 = forward
-            if backward_2 is None:
-                backward_2 = backward
-            if not self.inconsistent(forward_2, backward_2, condition):
-                return 0.5 * (forward_2 + backward_2), "resolved"
-            size_forward = np.linalg.norm(forward_2 / self.sigma[condition])
-            size_backward = np.linalg.norm(backward_2 / self.sigma[condition])
-            return (forward_2 if size_forward <= size_backward else backward_2), "inconsistent"
-        if forward is not None:
-            return forward, "one_sided"
-        if backward is not None:
-            return backward, "one_sided"
-        return None, "nan"
-
-def find_inconsistent(differences, param_names, conditions, step):
-    pairs = []
-    for param in param_names:
-        for condition in conditions:
-            forward, backward = differences.pair(differences.results, param, condition, step)
-            if forward is not None and backward is not None and differences.inconsistent(forward, backward, condition):
-                pairs.append((param, condition))
-    return pairs
-
-def resolve_inconsistent(pairs, step, runner):
-    """Re-solve both sides of the inconsistent pairs with the re-solve ladder: {(param, step): {condition: y}}."""
-    conditions_of = {}
-    for param, condition in pairs:
-        conditions_of.setdefault(param, []).append(condition)
-    tasks = []
-    for param, conditions in conditions_of.items():
-        for sign in (1.0, -1.0):
-            tasks.append((param, sign * step, 1, tuple(conditions)))
-    resolved = {}
-    for task, outputs in runner.run(tasks):
-        resolved[(task[0], task[1])] = outputs
-    return resolved
-
-def weighted_column_rms(columns_by_condition, sigma, conditions, n_params):
-    """RMS of every column of the sigma-weighted sensitivities (dy / sigma per ln theta); NaN counts as 0 here."""
-    total = np.zeros(n_params)
-    n_rows = 0
-    for condition in conditions:
-        weighted = np.where(np.isnan(columns_by_condition[condition]), 0.0, columns_by_condition[condition])
-        weighted = weighted / sigma[condition][:, None]
-        total += (weighted ** 2).sum(axis=0)
-        n_rows += weighted.shape[0]
-    return np.sqrt(total / max(n_rows, 1))
-
-def reduced_sensitivity(est, params, theta=None, param_names=None, relative=False, check=True):
+def condition_sensitivity(function, record, k_values):
     """
-    Reduced (profiled) sensitivities of the measured outputs at ``theta`` (default: the fit of ``est``) for the
-    columns ``param_names`` (default: the free parameters); see the module docstring.
+    (dy*/dk, y*, diagnostics) of one solved condition (the Pyomo model holds w*), by the null-space form of the KKT
+    system.  With the variables scaled by their values, dw = dw_p + Z dz: dw_p solves the linearised steady state
+    A dw_p = -dF/dk (least norm), Z is an orthonormal basis of the null space of A and the reduced Hessian Z^T H Z
+    gives dz = -(Z^T H Z)^-1 Z^T (d grad L / dk + H dw_p).  dy*/dk is None when the solve is not stationary.
+    """
+    w_star = np.array([float(variable.value) for variable in record["free_vars"]])
+    n_constraints = len(BALANCED_KEYS)
+    values = function(w_star, k_values, np.zeros(n_constraints))
+    _phi, F, h, grad_phi, F_w, _F_k, _H, _L_wk, _h_w, _h_k = [np.array(v) for v in values]
+    active = active_variables(record, w_star)
+    inactive = np.where(~active)[0]
+    scale = np.maximum(np.abs(w_star[inactive]), 1e-12)
+    A = F_w[:, inactive] * scale[None, :]
+    gradient = grad_phi[inactive, 0] * scale
+    # multipliers from the stationarity of the inactive variables: gradient + A^T lam = 0
+    lam, *_ = np.linalg.lstsq(A.T, -gradient, rcond=None)
+    stationarity = float(np.linalg.norm(gradient + A.T @ lam)) / max(float(np.linalg.norm(gradient)), 1e-300)
+    values = function(w_star, k_values, lam)
+    _phi, F, h, _grad_L, F_w, F_k, H, L_wk, h_w, h_k = [np.array(v) for v in values]
+    H_scaled = H[np.ix_(inactive, inactive)] * np.outer(scale, scale)
+    L_wk_scaled = L_wk[inactive, :] * scale[:, None]
+    h_w_scaled = h_w[:, inactive] * scale[None, :]
+    # particular solution of the linearised steady state and the null space of A
+    dw_particular, *_ = np.linalg.lstsq(A, -F_k, rcond=None)
+    _U, singular, Vt = np.linalg.svd(A)
+    rank = int(np.sum(singular > 1e-12 * singular[0]))
+    Z = Vt[rank:, :].T
+    reduced_hessian = Z.T @ H_scaled @ Z
+    eigenvalues, vectors = np.linalg.eigh(0.5 * (reduced_hessian + reduced_hessian.T))
+    # no null space (the steady state and the active bounds fix every variable): dw is the particular solution
+    largest = 1e-300
+    if eigenvalues.size:
+        largest = max(float(np.abs(eigenvalues).max()), 1e-300)
+    kept = np.abs(eigenvalues) > FLAT_RCOND * largest
+    flat_output_change = 0.0
+    if not kept.all():
+        flat_directions = Z @ vectors[:, ~kept]
+        flat_output_change = float(np.abs((h_w_scaled @ flat_directions) / record["sigma"][:, None]).max())
+    diagnostics = {"n_active": int(active.sum()), "stationarity": stationarity,
+                   "steady_state_residual": float(np.abs(F).max()), "constraint_rank": rank,
+                   "reduced_hessian_ratio": float(eigenvalues[kept].min() / largest) if kept.any() else 0.0,
+                   "n_flat": int((~kept).sum()), "flat_output_change": flat_output_change,
+                   "n_negative_curvature": int(np.sum(eigenvalues < -1e-8 * largest))}
+    if stationarity > STATIONARITY_RTOL:
+        return None, h[:, 0], diagnostics
+    projected = Z.T @ (L_wk_scaled + H_scaled @ dw_particular)
+    coefficients = (vectors[:, kept].T @ projected) / eigenvalues[kept][:, None]
+    dz = -vectors[:, kept] @ coefficients
+    dw_scaled = dw_particular + Z @ dz
+    dy = h_w_scaled @ dw_scaled + h_k
+    return dy, h[:, 0], diagnostics
 
-    The step h in ln theta is params["sens_step"]; consistent forward / backward pairs give the central difference.
-    With ``check`` every column is recomputed at params["sens_step_check"] and flagged fd_unstable when the weighted
-    column RMS differs by more than fd_consistency_rtol (+ fd_consistency_atol).  params["n_jobs"] workers.
-    ``relative``: d ln y / d ln theta (rows with |y*| < 1e-8 set to 0); otherwise dy / dtheta.
+def reduced_sensitivity(est, theta=None, param_names=None, relative=False):
+    """
+    Reduced sensitivities of the measured outputs at ``theta`` (default: the fit of ``est``) for the columns
+    ``param_names`` (default: the free parameters); see the module docstring.  ``relative``: d ln y / d ln theta (rows
+    with |y*| < 1e-8 set to 0); otherwise dy / dtheta.
 
-    Returns a dict: sensitivities {condition: DataFrame (measured outputs x param_names)}, sigma and y0
-    {condition: Series over the measured outputs: measurement sigma, model value y*(theta)} and report (n_entries,
-    n_failed_first_pass, n_recovered_by_retry, n_one_sided, n_inconsistent, n_resolved, n_nan_entries, nan_entries,
-    flags {param: [flag, ...]}, param_table, h, h_check).
+    Returns a dict: sensitivities {condition: DataFrame (measured outputs x param_names)}, sigma and y0 {condition:
+    Series}, failed (conditions without sensitivities: NaN entries) and condition_table (solver diagnostics).
     """
     check_solver("ipopt")
     conditions = list(est.conditions)
     param_names = list(est.free_params) if param_names is None else list(param_names)
     theta_full = est.full_theta(theta)
     x_init, u_init = est.primal_start()
-    primal = (x_init, u_init, est.primal_b_free())
-    step = float(params["sens_step"])
-    check_step = float(params["sens_step_check"])
-    steps = [step, check_step] if check else [step]
-    tasks = [(None, 0.0, 0, None)]
-    for param in param_names:
-        for size in steps:
-            for sign in (1.0, -1.0):
-                if step_allowed(theta_full, est.theta_bounds, param, sign * size):
-                    tasks.append((param, sign * size, 0, None))
-    problems = InnerProblems(est.setup, conditions, theta_full, primal, est.solver_options)
-    names = {c: problems.models[c]["names"] for c in conditions}
-    sigma = {c: problems.models[c]["sigma"] for c in conditions}
-    runner = TaskRunner(problems, est.setup, conditions, theta_full, primal, est.solver_options, params["n_jobs"])
-    try:
-        results = {}
-        for task, outputs in runner.run(tasks):
-            results[(task[0], task[1])] = outputs
-        n_failed, n_recovered = retry_failed(results, conditions, runner)
-        differences = Differences(results, {}, sigma, params)
-        flagged_pairs = find_inconsistent(differences, param_names, conditions, step)
-        differences.resolved = resolve_inconsistent(flagged_pairs, step, runner)
-    finally:
-        runner.close()
-    columns, table, nan_entries = sensitivity_columns(differences, param_names, conditions, names, step,
-                                                      check_step if check else None, set(flagged_pairs), theta_full,
-                                                      est.theta_bounds, params)
-    y0 = differences.y0
+    problems = InnerProblems(est.setup, conditions, theta_full, (x_init, u_init, est.primal_b_free()))
+    k_values = np.array([float(theta_full[p]) for p in param_names])
     sensitivities = {}
+    sigma = {}
+    y0 = {}
+    condition_rows = []
+    failed = []
     for condition in conditions:
-        values = columns[condition].copy()
+        record = problems.models[condition]
+        sigma[condition] = pd.Series(record["sigma"], index=record["names"])
+        converged = problems.solve(condition)
+        dy = None
+        diagnostics = {}
+        y = np.full(len(record["names"]), np.nan)
+        if converged:
+            function = symbolic_condition(record, condition, est.setup, theta_full, param_names)
+            dy, y, diagnostics = condition_sensitivity(function, record, k_values)
+        y0[condition] = pd.Series(y, index=record["names"])
+        if dy is None:
+            dy = np.full((len(record["names"]), len(param_names)), np.nan)
+            failed.append(condition)
         if relative:
-            safe = np.abs(y0[condition]) >= 1e-8
-            values = np.where(safe[:, None], values / np.where(safe, y0[condition], 1.0)[:, None], 0.0)
-        else:
-            values = values / np.array([float(theta_full[p]) for p in param_names])[None, :]
-        sensitivities[condition] = pd.DataFrame(values, index=names[condition], columns=param_names)
-    flags = {}
-    for param in param_names:
-        flags[param] = [f for f in ("at_bound", "fd_unstable", "fd_failed") if bool(table.loc[param, f])]
-    table["flags"] = [";".join(flags[p]) for p in param_names]
-    report = {"n_entries": int(len(param_names) * len(conditions)), "n_failed_first_pass": int(n_failed),
-              "n_recovered_by_retry": int(n_recovered), "n_one_sided": int(table["n_one_sided"].sum()),
-              "n_inconsistent": int(table["n_inconsistent"].sum()), "n_resolved": int(table["n_resolved"].sum()),
-              "n_nan_entries": len(nan_entries), "nan_entries": nan_entries, "flags": flags, "param_table": table,
-              "h": step, "h_check": check_step if check else None}
-    if nan_entries:
-        warnings.warn("reduced_sensitivity: %d (condition, parameter) entries could not be computed (NaN): %s ..." % (
-            len(nan_entries), nan_entries[:5]))
-    return {"sensitivities": sensitivities,
-            "sigma": {c: pd.Series(sigma[c], index=names[c]) for c in conditions},
-            "y0": {c: pd.Series(y0[c], index=names[c]) for c in conditions},
-            "report": report}
-
-def sensitivity_columns(differences, param_names, conditions, names, step, check_step, flagged_pairs, theta_full,
-                        bounds, params):
-    """
-    The dy / d ln theta columns of every condition, the per-parameter table (n_inconsistent, n_resolved,
-    n_one_sided, n_nan, at_bound, rms_h, rms_check, rel_diff_check, fd_unstable, fd_failed) and the NaN entries.
-    """
-    columns = {c: np.full((len(names[c]), len(param_names)), np.nan) for c in conditions}
-    check_columns = {c: np.full((len(names[c]), len(param_names)), np.nan) for c in conditions}
-    rows = []
-    nan_entries = []
-    for j, param in enumerate(param_names):
-        at_bound = not (step_allowed(theta_full, bounds, param, step)
-                        and step_allowed(theta_full, bounds, param, -step))
-        counts = {"ok": 0, "resolved": 0, "one_sided": 0, "inconsistent": 0, "nan": 0}
-        for condition in conditions:
-            value, status = differences.entry(param, condition, step, differences.results, flagged_pairs)
-            counts[status] += 1
-            if value is None:
-                nan_entries.append((condition, param))
-            else:
-                columns[condition][:, j] = value
-            if check_step is not None:
-                # the column check uses the first-pass solves only (no re-solve of inconsistent pairs)
-                value, _status = differences.entry(param, condition, check_step, differences.results, set())
-                if value is not None:
-                    check_columns[condition][:, j] = value
-        rows.append({"param": param, "n_inconsistent": counts["inconsistent"], "n_resolved": counts["resolved"],
-                     "n_one_sided": counts["one_sided"], "n_nan": counts["nan"], "at_bound": bool(at_bound)})
-    table = pd.DataFrame(rows).set_index("param")
-    sigma = differences.sigma
-    table["rms_h"] = weighted_column_rms(columns, sigma, conditions, len(param_names))
-    if check_step is not None:
-        table["rms_check"] = weighted_column_rms(check_columns, sigma, conditions, len(param_names))
-        largest = np.maximum(table["rms_h"], table["rms_check"])
-        difference = np.abs(table["rms_h"] - table["rms_check"])
-        table["rel_diff_check"] = difference / np.maximum(largest, 1e-300)
-        table["fd_unstable"] = difference > params["fd_consistency_rtol"] * largest + params["fd_consistency_atol"]
-    else:
-        table["rms_check"] = np.nan
-        table["rel_diff_check"] = np.nan
-        table["fd_unstable"] = False
-    table["fd_failed"] = table["n_nan"] > 2
-    return columns, table, nan_entries
+            safe = np.abs(y) >= 1e-8
+            dy = np.where(safe[:, None], dy * k_values[None, :] / np.where(safe, y, 1.0)[:, None], 0.0)
+        sensitivities[condition] = pd.DataFrame(dy, index=record["names"], columns=param_names)
+        condition_rows.append({"condition": condition, "converged": converged, **diagnostics})
+    if failed:
+        warnings.warn("reduced_sensitivity: no sensitivities for %s (solve or KKT failed)" % failed)
+    return {"sensitivities": sensitivities, "sigma": sigma, "y0": y0, "failed": failed,
+            "condition_table": pd.DataFrame(condition_rows).set_index("condition")}

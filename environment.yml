@@ -26,5 +26,3 @@ dependencies:
   - ipykernel=7.4
   - nbconvert=7.17        # executing the notebooks from the command line
   - nbformat=5.11
-# Optional, only for the k_aug covariance cross-check of final_analysis.py (it is skipped when k_aug is missing):
-#   pip install idaes-pse && idaes get-extensions      # puts k_aug and dot_sens into ~/.idaes/bin

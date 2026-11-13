@@ -13,7 +13,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 from estimation.estimator import GlycolysisParameterEstimator
 
-# The constructor arguments shared by the tasks, set once in every worker process (see start_worker)
+# The sets of constructor arguments shared by the tasks, set once in every worker process (see start_worker)
 WORKER_ARGS = None
 
 def fit_one(conditions, theta_init, estimator_args):
@@ -40,22 +40,27 @@ def start_worker(estimator_args):
     WORKER_ARGS = estimator_args
 
 def fit_task(task):
-    conditions, theta_init = task
-    return fit_one(conditions, theta_init, WORKER_ARGS)
+    conditions, theta_init, args_index = task
+    return fit_one(conditions, theta_init, WORKER_ARGS[args_index])
 
-def fit_many(condition_lists, theta_inits, estimator_args, n_jobs):
+def fit_many(condition_lists, theta_inits, estimator_args, n_jobs, args_indices=None):
     """
     Fit a fresh estimator on every pair (conditions, theta_init) of ``condition_lists`` and ``theta_inits``.
     ``estimator_args`` holds the other constructor arguments (free_params, solver_options, x_bounds, u_bounds,
-    drain_bounds, x_init, u_init, b_init).  ``n_jobs`` = 1 runs in this process, otherwise in a pool of n_jobs
-    workers.  Returns one (theta, objective, converged, error, wall_s) per task, in task order.
+    drain_bounds, x_init, u_init, b_init); it can also be a list of such dicts, and then ``args_indices`` says which
+    one every task uses.  ``n_jobs`` = 1 runs in this process, otherwise in a pool of n_jobs workers.  Returns one
+    (theta, objective, converged, error, wall_s) per task, in task order.
     """
-    tasks = list(zip(condition_lists, theta_inits))
+    if isinstance(estimator_args, dict):
+        estimator_args = [estimator_args]
+    if args_indices is None:
+        args_indices = [0] * len(theta_inits)
+    tasks = list(zip(condition_lists, theta_inits, args_indices))
     if n_jobs == 1:
         results = []
-        for conditions, theta_init in tasks:
-            results.append(fit_one(conditions, theta_init, estimator_args))
+        for conditions, theta_init, args_index in tasks:
+            results.append(fit_one(conditions, theta_init, estimator_args[args_index]))
         return results
     with ProcessPoolExecutor(max_workers=int(n_jobs), initializer=start_worker,
                              initargs=(estimator_args,)) as pool:
-        return list(pool.map(fit_task, tasks))
+        return list(pool.map(fit_task, tasks, chunksize=1))
